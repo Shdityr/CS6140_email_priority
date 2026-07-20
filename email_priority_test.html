@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email Priority — Test & Statistics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #F7F5F0;
+    --card: #FFFFFF;
+    --ink: #22262B;
+    --muted: #6B7178;
+    --line: #E4E1D8;
+    --keep: #0E7C6F;
+    --keep-bg: #E6F2EE;
+    --skip: #C85A3A;
+    --skip-bg: #FBEAE3;
+    --band: #2F6FED;
+    --band-bg: rgba(47,111,237,0.14);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;line-height:1.6;}
+  h1,h2,h3{font-family:'Space Grotesk',sans-serif;}
+  #app{max-width:760px;margin:0 auto;padding:32px 20px 60px;}
+  .header-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+  .eyebrow{font-size:12px;letter-spacing:0.06em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;}
+  .lede{font-size:14px;color:var(--muted);margin:0 0 28px;max-width:60ch;}
+  .lang-btn{flex-shrink:0;margin-top:2px;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:12px;}
+  .btn-row{display:flex;gap:10px;flex-wrap:wrap;}
+  button{font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;border-radius:9px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);padding:9px 16px;transition:all .15s ease;}
+  button:hover{border-color:var(--muted);}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink);}
+  button.primary:hover{opacity:.88;}
+  button.primary:disabled{background:var(--line);border-color:var(--line);color:var(--muted);cursor:not-allowed;}
+  button.small{padding:4px 10px;font-size:12px;}
+
+  .actions-bottom{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+  .loading{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted);padding:20px 0;justify-content:center;}
+  .spinner{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--ink);animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .error-box{background:var(--skip-bg);border:1px solid var(--skip);color:var(--skip);border-radius:10px;padding:14px 16px;font-size:13px;margin-bottom:16px;}
+  .note{font-size:12px;color:var(--muted);margin-top:24px;border-top:1px solid var(--line);padding-top:16px;}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:500;}
+  .field input[type=number]{width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;}
+  .hint{font-size:12px;color:var(--muted);margin:-6px 0 14px;}
+
+  .dropzone{border:1.5px dashed var(--line);border-radius:10px;padding:20px;text-align:center;font-size:13px;color:var(--muted);margin-bottom:12px;}
+  .dataset-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .dataset-row:last-child{border-bottom:none;}
+
+  .chart-wrap{margin:8px 0 20px;}
+  .stats-table{width:100%;border-collapse:collapse;font-size:13px;margin:4px 0 16px;}
+  .stats-table th,.stats-table td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;}
+  .stats-table th{color:var(--muted);font-weight:500;}
+  .progress-track{height:6px;background:var(--line);border-radius:999px;overflow:hidden;margin-top:8px;}
+  .progress-fill{height:100%;background:var(--ink);border-radius:999px;transition:width .2s ease;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const PRIVACY_SKIP = 'privacy_skip';
+const API_BASE = 'http://127.0.0.1:8000';
+
+const STRINGS = {
+  en: {
+    title: 'Test & Statistics',
+    lede: 'Import one or more labeled datasets exported by the Data Extractor tool, then automatically replay the cold-start + learning-curve simulation many times over randomly shuffled orderings — no manual clicking needed, since the ground-truth labels are already known.',
+    langBtn: '中文',
+    importLabel: 'Import labeled dataset file(s) (.json exported by the Data Extractor)',
+    importHint: 'You can select multiple files at once — they will be pooled into one combined dataset.',
+    datasetsLoaded: (n) => `${n} dataset(s) loaded`,
+    remove: 'Remove',
+    batchSizeLabel: 'Batch size (emails per round)',
+    trialsLabel: 'Number of random-shuffle trials to average',
+    poolPreview: (pool, rounds) => `Combined pool: ${pool} labeled emails (after excluding privacy-skips) → ${rounds} learning round(s) per trial`,
+    poolTooSmall: 'Not enough labeled emails for even one round — import more data or lower the batch size',
+    runBtn: 'Run experiment →',
+    runningText: (t, T, r, R) => `Trial ${t} / ${T}, round ${r} / ${R}…`,
+    chartTitle: 'Accuracy by training-set size (mean ± std across trials)',
+    colRound: 'Round',
+    colMean: 'Mean accuracy',
+    colStd: 'Std dev',
+    colTrials: 'Trials',
+    downloadCsv: 'Download raw CSV (all trials)',
+    restartBtn: 'Start a new experiment',
+    trendUp: 'Accuracy trends upward as more training data accumulates — the core claim of "adaptive learning" holds up under repeated random-order trials, not just a single lucky run.',
+    trendFlat: 'Accuracy is roughly flat across rounds. That can be a real finding (e.g. sender-history features need more repeat senders to kick in) — worth discussing as a limitation rather than assuming it is noise, since this is already averaged over multiple shuffles.',
+    trendDown: 'Accuracy trends downward as more data accumulates — worth investigating (e.g. regularization pulling too hard toward the prior, or conflicting labels across testers).',
+    noteText: 'This tool never touches Gmail — it only calls the shared backend\'s /classify endpoint, which runs the same local logistic-regression-style model used by the interactive demo. Anyone can run it as long as the backend (uvicorn app:app --port 8000) is reachable; no .env / Gmail credentials are required for this tool specifically.',
+  },
+  zh: {
+    title: '测试与统计',
+    lede: '导入一个或多个由数据提取工具导出的已标注数据集，程序会自动在多次随机打乱的顺序下重放"冷启动+学习曲线"模拟——因为真实标签已经知道，完全不需要手动点击确认。',
+    langBtn: 'EN',
+    importLabel: '导入已标注数据集文件（数据提取工具导出的 .json）',
+    importHint: '可以一次选择多个文件，它们会被合并成一个数据池。',
+    datasetsLoaded: (n) => `已加载 ${n} 个数据集`,
+    remove: '移除',
+    batchSizeLabel: '每批邮件数',
+    trialsLabel: '随机打乱重复次数（取平均）',
+    poolPreview: (pool, rounds) => `合并数据池：${pool} 封有效标注邮件（已排除隐私跳过）→ 每次试验 ${rounds} 轮学习`,
+    poolTooSmall: '有效标注邮件不足一轮所需数量——请导入更多数据或减小每批邮件数',
+    runBtn: '运行实验 →',
+    runningText: (t, T, r, R) => `第 ${t} / ${T} 组打乱，第 ${r} / ${R} 轮…`,
+    chartTitle: '准确率 vs 训练集大小（多组打乱的均值 ± 标准差）',
+    colRound: '轮次',
+    colMean: '平均准确率',
+    colStd: '标准差',
+    colTrials: '试验组数',
+    downloadCsv: '下载原始CSV（所有试验）',
+    restartBtn: '开始新实验',
+    trendUp: '随着训练数据增多，准确率呈上升趋势——这是在多次随机打乱下重复验证的结果，而不是单次运气好，"自适应学习"的核心结论站得住。',
+    trendFlat: '各轮准确率大体持平。这可能是真实的发现（比如发件人历史特征需要更多重复发件人才能生效），值得作为局限性讨论，而不是当作噪声忽略——毕竟已经是多组打乱取平均后的结果。',
+    trendDown: '随着数据增多准确率反而下降，值得进一步排查（比如正则化把权重拉得太靠近先验，或者不同标注者之间的标签有冲突）。',
+    noteText: '本工具完全不接触 Gmail——只调用共享后端的 /classify 接口，跑的是与互动演示相同的本地逻辑回归式模型。只要后端（uvicorn app:app --port 8000）在跑，任何人都能用这个工具，不需要为它单独配置 .env / Gmail 凭据。',
+  }
+};
+
+function t(key, ...args){
+  const dict = STRINGS[state.lang] || STRINGS.en;
+  const entry = dict[key];
+  if (typeof entry === 'function') return entry(...args);
+  return entry !== undefined ? entry : key;
+}
+
+let state = {
+  step: 'setup', // setup | running | results
+  lang: 'en',
+  datasets: [], // [{tester, source, count, emails:[{id,from,subject,snippet,label}]}]
+  batchSizeInput: 10,
+  trialsInput: 8,
+  importError: null,
+  running: false,
+  progress: {trial: 0, totalTrials: 0, round: 0, totalRounds: 0},
+  results: null
+};
+
+function toggleLang(){ state.lang = state.lang === 'en' ? 'zh' : 'en'; render(); }
+function setBatchSizeInput(v){ state.batchSizeInput = Math.max(1, parseInt(v, 10) || 1); render(); }
+function setTrialsInput(v){ state.trialsInput = Math.min(30, Math.max(1, parseInt(v, 10) || 1)); render(); }
+
+function combinedPool(){
+  const all = [];
+  state.datasets.forEach(ds => {
+    ds.emails.forEach(e => {
+      if (e.label === true || e.label === false) {
+        all.push({
+          id: ds.tester + '::' + e.id, from: e.from, subject: e.subject, snippet: e.snippet,
+          label: e.label, tester: ds.tester
+        });
+      }
+    });
+  });
+  return all;
+}
+
+function computeNumRounds(){
+  const pool = combinedPool();
+  return Math.floor(pool.length / state.batchSizeInput) - 1;
+}
+
+async function handleFiles(fileList){
+  state.importError = null;
+  const files = Array.from(fileList);
+  for (const file of files) {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed.emails || !Array.isArray(parsed.emails)) throw new Error('missing emails array');
+      state.datasets.push({
+        tester: parsed.tester || file.name,
+        source: parsed.source || 'unknown',
+        count: parsed.emails.length,
+        emails: parsed.emails
+      });
+    } catch (err) {
+      state.importError = 'Failed to parse "' + file.name + '": ' + err.message;
+    }
+  }
+  render();
+}
+
+function removeDataset(idx){
+  state.datasets.splice(idx, 1);
+  render();
+}
+
+function shuffle(arr){
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+  }
+  return a;
+}
+
+async function classifyEmails(labeledExamples, targetEmails){
+  const resp = await fetch(API_BASE + '/classify', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      examples: labeledExamples,
+      targets: targetEmails.map(e => ({id: e.id, from: e.from, subject: e.subject, snippet: e.snippet})),
+      lang: state.lang
+    })
+  });
+  if (!resp.ok) { throw new Error('Backend returned status ' + resp.status); }
+  return resp.json();
+}
+
+async function runExperiment(){
+  const pool = combinedPool();
+  const batchSize = state.batchSizeInput;
+  const trials = state.trialsInput;
+  const numRounds = Math.floor(pool.length / batchSize) - 1;
+  if (numRounds < 1) return;
+
+  state.step = 'running';
+  state.running = true;
+  state.progress = {trial: 0, totalTrials: trials, round: 0, totalRounds: numRounds};
+  render();
+
+  const perTrial = [];
+  for (let ti = 0; ti < trials; ti++) {
+    const shuffled = shuffle(pool);
+    const batches = [];
+    for (let i = 0; i <= numRounds; i++) batches.push(shuffled.slice(i * batchSize, (i + 1) * batchSize));
+
+    let examples = batches[0].map(e => ({from: e.from, subject: e.subject, snippet: e.snippet, keep: e.label}));
+    const trialRounds = [];
+    for (let r = 1; r <= numRounds; r++) {
+      state.progress = {trial: ti + 1, totalTrials: trials, round: r, totalRounds: numRounds};
+      render();
+      const targets = batches[r];
+      let preds;
+      try {
+        preds = await classifyEmails(examples, targets);
+      } catch (err) {
+        state.running = false;
+        state.step = 'setup';
+        state.importError = 'Experiment failed: ' + err.message;
+        render();
+        return;
+      }
+      let correct = 0, total = 0;
+      targets.forEach(e => {
+        const pred = preds.find(p => p.id === e.id);
+        total++;
+        if (pred && pred.keep === e.label) correct++;
+      });
+      trialRounds.push({round: r, correct, total});
+      examples = examples.concat(targets.map(e => ({from: e.from, subject: e.subject, snippet: e.snippet, keep: e.label})));
+    }
+    perTrial.push(trialRounds);
+  }
+
+  const aggregated = [];
+  for (let r = 1; r <= numRounds; r++) {
+    const pcts = perTrial.map(tr => tr[r - 1]).filter(Boolean).map(x => x.total ? (100 * x.correct / x.total) : 0);
+    const mean = pcts.reduce((a, b) => a + b, 0) / pcts.length;
+    const variance = pcts.reduce((a, b) => a + (b - mean) * (b - mean), 0) / pcts.length;
+    aggregated.push({round: r, mean, std: Math.sqrt(variance), n: pcts.length});
+  }
+
+  state.results = {perTrial, aggregated, numRounds, trials, batchSize, poolSize: pool.length};
+  state.running = false;
+  state.step = 'results';
+  render();
+}
+
+function resetExperiment(){
+  state = {
+    step: 'setup', lang: state.lang, datasets: [], batchSizeInput: state.batchSizeInput, trialsInput: state.trialsInput,
+    importError: null, running: false, progress: {trial: 0, totalTrials: 0, round: 0, totalRounds: 0}, results: null
+  };
+  render();
+}
+
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  app.appendChild(buildHeader());
+  if (state.step === 'setup') app.appendChild(buildSetup());
+  else if (state.step === 'running') app.appendChild(buildRunning());
+  else if (state.step === 'results') app.appendChild(buildResults());
+  app.appendChild(buildNote());
+}
+
+function buildHeader(){
+  const div = document.createElement('div');
+  div.className = 'header-row';
+  const left = document.createElement('div');
+  left.innerHTML = '<div class="eyebrow">SMART EMAIL PRIORITIZATION</div>' +
+    '<h1>' + t('title') + '</h1>' +
+    '<p class="lede">' + t('lede') + '</p>';
+  const langBtn = document.createElement('button');
+  langBtn.className = 'lang-btn';
+  langBtn.textContent = t('langBtn');
+  langBtn.onclick = toggleLang;
+  div.appendChild(left);
+  div.appendChild(langBtn);
+  return div;
+}
+
+function buildSetup(){
+  const div = document.createElement('div');
+  const form = document.createElement('div');
+  form.className = 'card';
+
+  const dz = document.createElement('div');
+  dz.className = 'dropzone';
+  dz.innerHTML = '<p style="margin:0 0 8px;">' + t('importLabel') + '</p>' +
+    '<input type="file" accept="application/json" multiple id="fileInput">' +
+    '<p class="hint" style="margin:8px 0 0;">' + t('importHint') + '</p>';
+  form.appendChild(dz);
+
+  if (state.importError) {
+    const errBox = document.createElement('div');
+    errBox.className = 'error-box';
+    errBox.textContent = state.importError;
+    form.appendChild(errBox);
+  }
+
+  if (state.datasets.length) {
+    const list = document.createElement('div');
+    list.style.marginBottom = '14px';
+    list.innerHTML = '<p style="margin:0 0 6px;font-size:13px;font-weight:600;">' + t('datasetsLoaded', state.datasets.length) + '</p>';
+    state.datasets.forEach((ds, i) => {
+      const row = document.createElement('div');
+      row.className = 'dataset-row';
+      row.innerHTML = '<span>' + ds.tester + ' — ' + ds.count + ' emails (' + ds.source + ')</span>';
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'small';
+      rmBtn.textContent = t('remove');
+      rmBtn.onclick = () => removeDataset(i);
+      row.appendChild(rmBtn);
+      list.appendChild(row);
+    });
+    form.appendChild(list);
+
+    const batchField = document.createElement('div');
+    batchField.className = 'field';
+    batchField.innerHTML = '<label>' + t('batchSizeLabel') + '</label>' +
+      '<input type="number" min="1" value="' + state.batchSizeInput + '" oninput="setBatchSizeInput(this.value)">';
+    form.appendChild(batchField);
+
+    const trialsField = document.createElement('div');
+    trialsField.className = 'field';
+    trialsField.innerHTML = '<label>' + t('trialsLabel') + '</label>' +
+      '<input type="number" min="1" max="30" value="' + state.trialsInput + '" oninput="setTrialsInput(this.value)">';
+    form.appendChild(trialsField);
+
+    const poolSize = combinedPool().length;
+    const numRounds = computeNumRounds();
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = numRounds < 1 ? t('poolTooSmall') : t('poolPreview', poolSize, numRounds);
+    form.appendChild(hint);
+
+    const actions = document.createElement('div');
+    actions.className = 'actions-bottom';
+    const runBtn = document.createElement('button');
+    runBtn.className = 'primary';
+    runBtn.disabled = numRounds < 1;
+    runBtn.textContent = t('runBtn');
+    runBtn.onclick = runExperiment;
+    actions.appendChild(runBtn);
+    form.appendChild(actions);
+  }
+
+  div.appendChild(form);
+  setTimeout(() => {
+    const input = document.getElementById('fileInput');
+    if (input) input.onchange = (e) => handleFiles(e.target.files);
+  }, 0);
+  return div;
+}
+
+function buildRunning(){
+  const div = document.createElement('div');
+  const card = document.createElement('div');
+  card.className = 'card';
+  const p = state.progress;
+  const pct = p.totalTrials ? Math.round((((p.trial - 1) * p.totalRounds + p.round) / (p.totalTrials * p.totalRounds)) * 100) : 0;
+  card.innerHTML = '<div class="loading"><div class="spinner"></div>' + t('runningText', p.trial, p.totalTrials, p.round, p.totalRounds) + '</div>' +
+    '<div class="progress-track"><div class="progress-fill" style="width:' + pct + '%"></div></div>';
+  div.appendChild(card);
+  return div;
+}
+
+function buildBandChartSVG(aggregated){
+  const w = 680, h = 220, padL = 36, padR = 12, padT = 16, padB = 24;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+  const n = aggregated.length;
+  const x = (i) => padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+  const yOf = (pct) => padT + plotH - (Math.max(0, Math.min(100, pct)) / 100) * plotH;
+
+  let grid = '';
+  [0, 50, 100].forEach(pct => {
+    grid += '<line x1="' + padL + '" y1="' + yOf(pct) + '" x2="' + (w - padR) + '" y2="' + yOf(pct) + '" stroke="var(--line)" stroke-width="1"/>';
+    grid += '<text x="' + (padL - 8) + '" y="' + (yOf(pct) + 4) + '" font-size="10" fill="var(--muted)" text-anchor="end">' + pct + '%</text>';
+  });
+
+  const upper = aggregated.map((s, i) => x(i) + ',' + yOf(s.mean + s.std)).join(' ');
+  const lowerRev = aggregated.slice().reverse().map((s, i) => x(n - 1 - i) + ',' + yOf(s.mean - s.std)).join(' ');
+  const bandPoints = upper + ' ' + lowerRev;
+
+  const meanLine = aggregated.map((s, i) => x(i) + ',' + yOf(s.mean)).join(' ');
+  let dots = '';
+  aggregated.forEach((s, i) => {
+    dots += '<circle cx="' + x(i) + '" cy="' + yOf(s.mean) + '" r="3.5" fill="var(--band)"/>';
+    dots += '<text x="' + x(i) + '" y="' + (yOf(s.mean) - 10) + '" font-size="10" fill="var(--ink)" text-anchor="middle">' + s.mean.toFixed(0) + '%</text>';
+    dots += '<text x="' + x(i) + '" y="' + (h - 6) + '" font-size="10" fill="var(--muted)" text-anchor="middle">' + s.round + '</text>';
+  });
+
+  return '<svg class="chart-svg" viewBox="0 0 ' + w + ' ' + h + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">' +
+    grid +
+    '<polygon points="' + bandPoints + '" fill="var(--band-bg)" stroke="none"/>' +
+    '<polyline points="' + meanLine + '" fill="none" stroke="var(--band)" stroke-width="2"/>' +
+    dots +
+    '</svg>';
+}
+
+function downloadCsv(){
+  const r = state.results;
+  const header = 'trial,round,total,correct,accuracy_pct\n';
+  const rows = [];
+  r.perTrial.forEach((trialRounds, ti) => {
+    trialRounds.forEach(rd => {
+      const pct = rd.total ? (100 * rd.correct / rd.total).toFixed(1) : '';
+      rows.push((ti + 1) + ',' + rd.round + ',' + rd.total + ',' + rd.correct + ',' + pct);
+    });
+  });
+  const blob = new Blob([header + rows.join('\n')], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'email_priority_experiment_raw.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function trendText(aggregated){
+  if (aggregated.length < 2) return t('trendFlat');
+  const first = aggregated[0].mean, last = aggregated[aggregated.length - 1].mean;
+  if (last > first + 1) return t('trendUp');
+  if (last < first - 1) return t('trendDown');
+  return t('trendFlat');
+}
+
+function buildResults(){
+  const div = document.createElement('div');
+  const r = state.results;
+
+  const summary = document.createElement('div');
+  summary.className = 'card';
+  summary.innerHTML = '<p style="margin:0;font-size:13px;color:var(--muted);">' +
+    'Pool: ' + r.poolSize + ' emails · Batch size: ' + r.batchSize + ' · Trials: ' + r.trials + ' · Rounds per trial: ' + r.numRounds +
+    '</p>';
+  div.appendChild(summary);
+
+  const chartCard = document.createElement('div');
+  chartCard.className = 'card chart-wrap';
+  chartCard.innerHTML = '<p style="margin:0 0 10px;font-size:14px;font-weight:600;">' + t('chartTitle') + '</p>' + buildBandChartSVG(r.aggregated);
+  div.appendChild(chartCard);
+
+  const tableCard = document.createElement('div');
+  tableCard.className = 'card';
+  let tableHtml = '<table class="stats-table"><thead><tr>' +
+    '<th>' + t('colRound') + '</th><th>' + t('colMean') + '</th><th>' + t('colStd') + '</th><th>' + t('colTrials') + '</th>' +
+    '</tr></thead><tbody>';
+  r.aggregated.forEach(s => {
+    tableHtml += '<tr><td>' + s.round + '</td><td>' + s.mean.toFixed(1) + '%</td><td>±' + s.std.toFixed(1) + '%</td><td>' + s.n + '</td></tr>';
+  });
+  tableHtml += '</tbody></table><p style="margin:0;font-size:14px;">' + trendText(r.aggregated) + '</p>';
+  tableCard.innerHTML = tableHtml;
+  div.appendChild(tableCard);
+
+  const actions = document.createElement('div');
+  actions.className = 'actions-bottom';
+  const csvBtn = document.createElement('button');
+  csvBtn.textContent = t('downloadCsv');
+  csvBtn.onclick = downloadCsv;
+  const restartBtn = document.createElement('button');
+  restartBtn.textContent = t('restartBtn');
+  restartBtn.onclick = resetExperiment;
+  actions.appendChild(csvBtn);
+  actions.appendChild(restartBtn);
+  div.appendChild(actions);
+
+  return div;
+}
+
+function buildNote(){
+  const div = document.createElement('div');
+  div.className = 'note';
+  div.textContent = t('noteText');
+  return div;
+}
+
+render();
+</script>
+</body>
+</html>

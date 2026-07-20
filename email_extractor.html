@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email Priority — Data Extractor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #F7F5F0;
+    --card: #FFFFFF;
+    --ink: #22262B;
+    --muted: #6B7178;
+    --line: #E4E1D8;
+    --keep: #0E7C6F;
+    --keep-bg: #E6F2EE;
+    --skip: #C85A3A;
+    --skip-bg: #FBEAE3;
+    --privacy-bg: #ECEAE2;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;line-height:1.6;}
+  h1,h2,h3{font-family:'Space Grotesk',sans-serif;}
+  #app{max-width:720px;margin:0 auto;padding:32px 20px 60px;}
+  .eyebrow{font-size:12px;letter-spacing:0.06em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;}
+  .lede{font-size:14px;color:var(--muted);margin:0 0 28px;max-width:56ch;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:12px;}
+  .email-from{font-size:12px;color:var(--muted);margin-bottom:2px;word-break:break-word;}
+  .email-subject{font-size:15px;font-weight:500;margin-bottom:4px;word-break:break-word;}
+  .email-snippet{font-size:13px;color:var(--muted);margin-bottom:14px;}
+
+  .btn-row{display:flex;gap:10px;flex-wrap:wrap;}
+  button{font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;border-radius:9px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);padding:9px 16px;transition:all .15s ease;}
+  button:hover{border-color:var(--muted);}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink);}
+  button.primary:hover{opacity:.88;}
+  button.primary:disabled{background:var(--line);border-color:var(--line);color:var(--muted);cursor:not-allowed;}
+  button.choice-keep.selected{background:var(--keep-bg);border-color:var(--keep);color:var(--keep);}
+  button.choice-skip.selected{background:var(--skip-bg);border-color:var(--skip);color:var(--skip);}
+  button.choice-privacy.selected{background:var(--privacy-bg);border-color:var(--muted);color:var(--muted);}
+
+  .actions-bottom{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+  .loading{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted);padding:40px 0;justify-content:center;}
+  .spinner{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--ink);animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .error-box{background:var(--skip-bg);border:1px solid var(--skip);color:var(--skip);border-radius:10px;padding:14px 16px;font-size:13px;margin-bottom:16px;}
+  .note{font-size:12px;color:var(--muted);margin-top:24px;border-top:1px solid var(--line);padding-top:16px;}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:500;}
+  .field input[type=number],.field input[type=text]{width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;}
+
+  .progress-sticky{position:sticky;top:0;background:var(--bg);padding:10px 0;font-size:13px;color:var(--muted);font-weight:500;z-index:5;border-bottom:1px solid var(--line);margin-bottom:12px;}
+  .success-box{background:var(--keep-bg);border:1px solid var(--keep);color:var(--keep);border-radius:10px;padding:14px 16px;font-size:14px;margin-bottom:16px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const PRIVACY_SKIP = 'privacy_skip';
+const API_BASE = 'http://127.0.0.1:8000';
+
+let state = {
+  step: 'setup', // setup | label | done
+  testerName: '',
+  source: 'gmail', // 'gmail' | 'sample'
+  totalInput: 60,
+  pool: null,
+  labels: {},
+  gmailLoading: false,
+  gmailError: null
+};
+
+const SAMPLE_POOL = [
+  {id:'s1', from:'David Chen · VP Engineering', subject:'Re: Q3 roadmap review — need your input by Friday', snippet:'Could you take a look at the roadmap doc before our sync?'},
+  {id:'s2', from:'TechWeekly Newsletter', subject:'5 AI trends worth watching this quarter', snippet:'Your weekly tech digest has arrived.'},
+  {id:'s3', from:'IT Security Team', subject:'Your password expires in 3 days', snippet:'Please reset your password soon to avoid lockout.'},
+  {id:'s4', from:'BestDeals4U', subject:'50% OFF EVERYTHING — TODAY ONLY!!!', snippet:'Flash sale ends at midnight, don\'t miss out.'},
+  {id:'s5', from:'Sarah · coworker', subject:'Lunch tomorrow?', snippet:'Want to grab lunch tomorrow and catch up?'},
+  {id:'s6', from:'HR Department', subject:'Benefits enrollment deadline reminder', snippet:'Please complete annual benefits enrollment by month end.'}
+];
+
+function setTesterName(v){ state.testerName = v; render(); }
+function setSource(src){ state.source = src; render(); }
+function setTotalInput(v){ state.totalInput = Math.min(200, Math.max(6, parseInt(v, 10) || 0)); render(); }
+
+async function startFetch(){
+  if (state.source === 'sample') {
+    state.pool = SAMPLE_POOL;
+    state.labels = {};
+    state.step = 'label';
+    render();
+    return;
+  }
+  state.gmailLoading = true;
+  state.gmailError = null;
+  render();
+  try {
+    const resp = await fetch(API_BASE + '/gmail/fetch?count=' + state.totalInput);
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.detail || ('Backend returned status ' + resp.status));
+    }
+    const emails = await resp.json();
+    if (!emails.length) throw new Error('No emails returned — check backend/.env credentials.');
+    state.pool = emails;
+    state.labels = {};
+    state.gmailLoading = false;
+    state.step = 'label';
+    render();
+  } catch (err) {
+    state.gmailLoading = false;
+    state.gmailError = err.message;
+    render();
+  }
+}
+
+function setLabel(id, value){
+  state.labels[id] = value;
+  render();
+}
+
+function exportLabels(){
+  const emails = state.pool.map(e => ({
+    id: e.id, from: e.from, subject: e.subject, snippet: e.snippet,
+    label: state.labels[e.id]
+  }));
+  const payload = {
+    format: 'email-priority-labeled-v1',
+    tester: state.testerName || 'anonymous',
+    source: state.source,
+    count: emails.length,
+    emails: emails
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = (state.testerName || 'anonymous').replace(/[^a-z0-9_-]/gi, '_');
+  a.href = url;
+  a.download = 'labeled_' + safeName + '_' + emails.length + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  state.step = 'done';
+  render();
+}
+
+function startOver(){
+  state = {
+    step: 'setup', testerName: state.testerName, source: state.source, totalInput: state.totalInput,
+    pool: null, labels: {}, gmailLoading: false, gmailError: null
+  };
+  render();
+}
+
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  app.appendChild(buildHeader());
+  if (state.step === 'setup') app.appendChild(buildSetup());
+  else if (state.step === 'label') app.appendChild(buildLabel());
+  else if (state.step === 'done') app.appendChild(buildDone());
+  app.appendChild(buildNote());
+}
+
+function buildHeader(){
+  const div = document.createElement('div');
+  div.innerHTML = '<div class="eyebrow">SMART EMAIL PRIORITIZATION</div>' +
+    '<h1>Data Extractor</h1>' +
+    '<p class="lede">Fetch a batch of your own inbox emails, label each one Keep / Skip / Skip (privacy), then export a small JSON file. Send that file to whoever is running the test tool — no email passwords or full message bodies leave this file, just subject lines, short snippets, and your labels.</p>';
+  return div;
+}
+
+function buildSetup(){
+  const div = document.createElement('div');
+  const form = document.createElement('div');
+  form.className = 'card';
+
+  const nameField = document.createElement('div');
+  nameField.className = 'field';
+  nameField.innerHTML = '<label>Your name or id (used in the exported filename, helps whoever combines everyone\'s data)</label>' +
+    '<input type="text" placeholder="e.g. vignesh" value="' + state.testerName + '" oninput="setTesterName(this.value)">';
+  form.appendChild(nameField);
+
+  const sourceField = document.createElement('div');
+  sourceField.className = 'field';
+  sourceField.innerHTML = '<label>Source</label>';
+  const radioRow = document.createElement('div');
+  radioRow.className = 'btn-row';
+  const gmailBtn = document.createElement('button');
+  gmailBtn.className = state.source === 'gmail' ? 'primary' : '';
+  gmailBtn.textContent = 'My real Gmail inbox';
+  gmailBtn.onclick = () => setSource('gmail');
+  const sampleBtn = document.createElement('button');
+  sampleBtn.className = state.source === 'sample' ? 'primary' : '';
+  sampleBtn.textContent = 'Sample emails (dry run, no Gmail needed)';
+  sampleBtn.onclick = () => setSource('sample');
+  radioRow.appendChild(gmailBtn);
+  radioRow.appendChild(sampleBtn);
+  sourceField.appendChild(radioRow);
+  form.appendChild(sourceField);
+
+  if (state.source === 'gmail') {
+    const totalField = document.createElement('div');
+    totalField.className = 'field';
+    totalField.innerHTML = '<label>How many emails to fetch (max 200)</label>' +
+      '<input type="number" min="6" max="200" value="' + state.totalInput + '" oninput="setTotalInput(this.value)">';
+    form.appendChild(totalField);
+  }
+
+  if (state.gmailError) {
+    const errBox = document.createElement('div');
+    errBox.className = 'error-box';
+    errBox.textContent = state.gmailError;
+    form.appendChild(errBox);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'actions-bottom';
+  if (state.gmailLoading) {
+    actions.innerHTML = '<div class="loading"><div class="spinner"></div>Fetching from Gmail… (can take up to about a minute for larger counts)</div>';
+  } else {
+    const btn = document.createElement('button');
+    btn.className = 'primary';
+    btn.textContent = state.source === 'gmail' ? 'Fetch emails →' : 'Load sample emails →';
+    btn.onclick = startFetch;
+    actions.appendChild(btn);
+  }
+  form.appendChild(actions);
+  div.appendChild(form);
+  return div;
+}
+
+function buildLabel(){
+  const div = document.createElement('div');
+  const done = state.pool.filter(e => state.labels[e.id] !== undefined).length;
+  const sticky = document.createElement('div');
+  sticky.className = 'progress-sticky';
+  sticky.textContent = 'Labeled ' + done + ' / ' + state.pool.length;
+  div.appendChild(sticky);
+
+  state.pool.forEach(e => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const choice = state.labels[e.id];
+    card.innerHTML =
+      '<div class="email-from">' + e.from + '</div>' +
+      '<div class="email-subject">' + e.subject + '</div>' +
+      '<div class="email-snippet">' + e.snippet + '</div>' +
+      '<div class="btn-row">' +
+        '<button class="choice-keep' + (choice === true ? ' selected' : '') + '" onclick="setLabel(\'' + e.id + '\', true)">Keep</button>' +
+        '<button class="choice-skip' + (choice === false ? ' selected' : '') + '" onclick="setLabel(\'' + e.id + '\', false)">Skip</button>' +
+        '<button class="choice-privacy' + (choice === PRIVACY_SKIP ? ' selected' : '') + '" onclick="setLabel(\'' + e.id + '\', \'' + PRIVACY_SKIP + '\')">Skip (privacy)</button>' +
+      '</div>';
+    div.appendChild(card);
+  });
+
+  const allDone = state.pool.every(e => state.labels[e.id] !== undefined);
+  const actions = document.createElement('div');
+  actions.className = 'actions-bottom';
+  const exportBtn = document.createElement('button');
+  exportBtn.className = 'primary';
+  exportBtn.disabled = !allDone;
+  exportBtn.textContent = 'Export labeled data (.json) →';
+  exportBtn.onclick = exportLabels;
+  actions.appendChild(exportBtn);
+  div.appendChild(actions);
+  return div;
+}
+
+function buildDone(){
+  const div = document.createElement('div');
+  const skipCount = state.pool.filter(e => state.labels[e.id] === PRIVACY_SKIP).length;
+  div.innerHTML = '<div class="success-box">File downloaded. Send it to whoever is running the test tool (' +
+    (state.pool.length - skipCount) + ' usable labels, ' + skipCount + ' marked privacy-skip and excluded from the file\'s scoring data — but note their subject/snippet text is still in the file, so only mark privacy-skip if you\'re also fine sharing that text, or remove those entries by hand before sending).</div>';
+  const actions = document.createElement('div');
+  actions.className = 'actions-bottom';
+  const btn = document.createElement('button');
+  btn.textContent = 'Label another batch';
+  btn.onclick = startOver;
+  actions.appendChild(btn);
+  div.appendChild(actions);
+  return div;
+}
+
+function buildNote(){
+  const div = document.createElement('div');
+  div.className = 'note';
+  div.textContent = 'Setup: run the shared backend locally (uvicorn app:app --port 8000 --reload from the backend/ folder) with your own Gmail app password in backend/.env — see SETUP.md. This tool only calls /gmail/fetch; it never sends anything to a third-party AI.';
+  return div;
+}
+
+render();
+</script>
+</body>
+</html>

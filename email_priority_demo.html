@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>邮件优先级助手 · 冷启动与自适应学习演示</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #F7F5F0;
+    --card: #FFFFFF;
+    --ink: #22262B;
+    --muted: #6B7178;
+    --line: #E4E1D8;
+    --keep: #0E7C6F;
+    --keep-bg: #E6F2EE;
+    --skip: #C85A3A;
+    --skip-bg: #FBEAE3;
+    --pending: #B8A76A;
+    --ai-correct: #2F6FED;
+    --ai-correct-bg: #E8EEFC;
+    --ai-corrected: #B4690E;
+    --ai-corrected-bg: #FBEEDC;
+    --privacy-bg: #ECEAE2;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'IBM Plex Sans','PingFang SC','Microsoft YaHei',sans-serif;
+    line-height:1.6;
+  }
+  h1,h2,h3,.step-label{font-family:'Space Grotesk','PingFang SC','Microsoft YaHei',sans-serif;}
+  #app{max-width:720px;margin:0 auto;padding:32px 20px 60px;}
+  .header-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+  .eyebrow{font-size:12px;letter-spacing:0.06em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;}
+  .lede{font-size:14px;color:var(--muted);margin:0 0 28px;max-width:56ch;}
+  .lang-btn{flex-shrink:0;margin-top:2px;}
+
+  .progress-wrap{margin-bottom:28px;}
+  .progress-text{font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:500;}
+  .progress-track{height:6px;background:var(--line);border-radius:999px;overflow:hidden;}
+  .progress-fill{height:100%;background:var(--ink);border-radius:999px;transition:width .2s ease;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:12px;}
+  .email-from{font-size:12px;color:var(--muted);margin-bottom:2px;word-break:break-word;}
+  .email-subject{font-size:15px;font-weight:500;margin-bottom:4px;word-break:break-word;}
+  .email-snippet{font-size:13px;color:var(--muted);margin-bottom:14px;}
+
+  .btn-row{display:flex;gap:10px;flex-wrap:wrap;}
+  button{
+    font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;
+    border-radius:9px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);
+    padding:9px 16px;transition:all .15s ease;
+  }
+  button:hover{border-color:var(--muted);}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink);}
+  button.primary:hover{opacity:.88;}
+  button.primary:disabled{background:var(--line);border-color:var(--line);color:var(--muted);cursor:not-allowed;}
+  button.choice-keep.selected{background:var(--keep-bg);border-color:var(--keep);color:var(--keep);}
+  button.choice-skip.selected{background:var(--skip-bg);border-color:var(--skip);color:var(--skip);}
+  button.choice-privacy.selected{background:var(--privacy-bg);border-color:var(--muted);color:var(--muted);}
+
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:4px 10px;border-radius:999px;margin:0 8px 10px 0;}
+  .badge.keep{background:var(--keep-bg);color:var(--keep);}
+  .badge.skip{background:var(--skip-bg);color:var(--skip);}
+  .badge.correct{background:var(--ai-correct-bg);color:var(--ai-correct);}
+  .badge.corrected{background:var(--ai-corrected-bg);color:var(--ai-corrected);}
+  .badge.privacy{background:var(--privacy-bg);color:var(--muted);}
+  .reason{font-size:12px;color:var(--muted);margin:-4px 0 14px;font-style:italic;}
+
+  .actions-bottom{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+  .loading{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted);padding:40px 0;justify-content:center;}
+  .spinner{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--ink);animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0;}
+  .stat-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center;}
+  .stat-num{font-size:28px;font-weight:600;font-family:'Space Grotesk',sans-serif;}
+  .stat-label{font-size:12px;color:var(--muted);margin-top:4px;}
+
+  .error-box{background:var(--skip-bg);border:1px solid var(--skip);color:var(--skip);border-radius:10px;padding:14px 16px;font-size:13px;margin-bottom:16px;}
+  .note{font-size:12px;color:var(--muted);margin-top:24px;border-top:1px solid var(--line);padding-top:16px;}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:500;}
+  .field input[type=number]{width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;}
+  .radio-row{display:flex;gap:10px;margin-bottom:14px;}
+  .radio-option{flex:1;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;font-size:13px;}
+  .radio-option.selected{border-color:var(--ink);background:#F1EFE8;}
+  .hint{font-size:12px;color:var(--muted);margin:-6px 0 14px;}
+
+  .chart-wrap{margin:8px 0 20px;}
+  .stats-table{width:100%;border-collapse:collapse;font-size:13px;margin:4px 0 16px;}
+  .stats-table th,.stats-table td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;}
+  .stats-table th{color:var(--muted);font-weight:500;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const PRIVACY_SKIP = '__privacy_skip__';
+const API_BASE = 'http://127.0.0.1:8000';
+
+const coldstartEmails = [
+  {id:'c1', from:'David Chen · VP工程', subject:'Re: Q3路线图评审 —— 周五前需要你的意见', snippet:'能否在我们同步会议前，先看一下附件里的路线图文档？'},
+  {id:'c2', from:'TechWeekly 订阅', subject:'本季度值得关注的5个AI趋势', snippet:'你的每周科技资讯摘要已送达。'},
+  {id:'c3', from:'IT安全团队', subject:'你的密码将在3天后过期', snippet:'请尽快重置密码，以免账号被锁定。'},
+  {id:'c4', from:'BestDeals4U', subject:'全场5折 —— 仅限今天！！！', snippet:'限时抢购将于午夜结束，不要错过。'},
+  {id:'c5', from:'Sarah · 同事', subject:'明天一起吃午饭？', snippet:'明天中午一起吃个饭，聊聊近况怎么样？'},
+  {id:'c6', from:'人力资源部', subject:'年度福利登记截止提醒', snippet:'请在月底前完成年度福利登记。'}
+];
+
+const round1Emails = [
+  {id:'r1_1', from:'LinkedIn', subject:'你有3条新的连接请求', snippet:'看看谁想和你建立联系。'},
+  {id:'r1_2', from:'David Chen · VP工程', subject:'紧急：生产环境故障复盘', snippet:'请所有人在10分钟内加入会议。'},
+  {id:'r1_3', from:'全员大会', subject:'本月全员大会录屏已发布', snippet:'错过的同事可以在这里回看本月更新。'},
+  {id:'r1_4', from:'Amazon', subject:'你的包裹已发货', snippet:'预计3天内送达，点击查看物流详情。'},
+  {id:'r1_5', from:'猎头顾问', subject:'一个不容错过的职业机会', snippet:'有个非常适合你背景的职位，方便聊聊吗？'},
+  {id:'r1_6', from:'财务团队', subject:'需要你审批报销单', snippet:'你的主管正在等待你提交报销审批。'}
+];
+
+const round2Emails = [
+  {id:'r2_1', from:'Slack摘要', subject:'你有12条未读提及', snippet:'过去24小时内你被提到了12次。'},
+  {id:'r2_2', from:'David Chen · VP工程', subject:'这次发布干得漂亮', snippet:'这周辛苦了，效果非常好，谢谢你的付出。'},
+  {id:'r2_3', from:'会议委员会', subject:'2027 AI系统大会征稿启事', snippet:'诚邀提交论文，截稿日期为下月底。'},
+  {id:'r2_4', from:'银行提醒', subject:'检测到异常登录尝试', snippet:'发现一次来自新设备的登录，请确认是否为本人操作。'},
+  {id:'r2_5', from:'每周趣味问答', subject:'本周知识挑战来啦', snippet:'测测你的知识储备，赢取小奖励。'},
+  {id:'r2_6', from:'Sarah · 同事', subject:'方便帮我看一下这个PR吗？', snippet:'有空的话，想请你review一下我提的这个改动。'}
+];
+
+const STRINGS = {
+  zh: {
+    title: '冷启动 + 自适应学习 演示',
+    lede: '用一批邮件的初始标注启动模型，再靠你后续的确认/纠正不断学习偏好，可自选轮数和邮件量，模拟"越用越准"的过程。',
+    langBtn: 'EN',
+    setupIntro1: '1. 你先给第一批邮件打标签：还想看 / 不想看 / 跳过（隐私），作为冷启动数据。',
+    setupIntro2: '2. 每一轮，系统基于目前为止的所有标签预测下一批邮件。',
+    setupIntro3: '3. 你确认或纠正预测结果，反馈滚动进入下一轮；全部轮次结束后，查看每轮准确率的图表并可导出CSV。',
+    sourceLabel: '数据来源',
+    sourceSample: '示例邮件（固定18封，2轮学习）',
+    sourceGmail: '我的真实 Gmail 邮件',
+    totalLabel: '总邮件数（含冷启动批次，最多200）',
+    roundsLabel: '学习轮数（不含冷启动）',
+    batchPreview: (n, m) => `每批 ${n} 封 · 冷启动 + ${m} 轮学习，共使用 ${n * (m + 1)} 封`,
+    batchTooSmall: '每批不足1封，请增加总邮件数或减少轮数',
+    startSample: '用示例邮件开始 →',
+    startGmail: '从 Gmail 拉取邮件并开始 →',
+    gmailLoading: (n) => `正在从 Gmail 拉取 ${n} 封邮件…（数量较多时可能需要一分钟左右）`,
+    gmailTooFew: (n) => `拉到的邮件不足 ${n} 封，换个邮箱或减少总邮件数再试`,
+    stepColdstart: '初始标注',
+    stepRound: (i, n) => `第 ${i} / ${n} 轮`,
+    stepSummary: '效果对比',
+    keepBtn: '还想看',
+    skipBtn: '不想看',
+    privacyBtn: '跳过（隐私）',
+    coldstartDone: '完成标注，让AI开始学习 →',
+    roundHeading: (i, n) => `第 ${i} / ${n} 轮：结合目前所有反馈做出的预测`,
+    aiPredictKeep: 'AI 预测：还想看',
+    aiPredictSkip: 'AI 预测：不想看',
+    reasonPrefix: '理由：',
+    verdictCorrect: '✓ AI 猜对了',
+    verdictCorrectedKeep: '✕ 已纠正为：还想看',
+    verdictCorrectedSkip: '✕ 已纠正为：不想看',
+    verdictPrivacy: '已跳过（隐私，不计入统计）',
+    confirmCorrectBtn: 'AI 猜对了',
+    confirmFlipBtn: '不对，反过来',
+    loadingRound: 'AI 正在根据已有标注学习你的偏好…',
+    retryBtn: '重试',
+    nextRoundBtn: (i) => `进入第 ${i} 轮 →`,
+    toSummaryBtn: '查看统计与图表 →',
+    chartTitle: '各轮准确率趋势',
+    colRound: '轮次',
+    colLabeled: '有效标注数',
+    colCorrect: 'AI猜对数',
+    colAccuracy: '准确率',
+    colSkipped: '隐私跳过',
+    downloadCsv: '下载CSV',
+    restartBtn: '重新开始演示',
+    trendUp: '整体趋势是准确率随轮次上升——这正是"自适应学习"想验证的效果：反馈越多，模型对这个具体用户的画像就越准。',
+    trendFlat: '各轮准确率大体持平。样本量较小或用户偏好本身不集中时会有波动，属于正常现象；建议汇总多组测试者的数据看整体趋势，而不是看单次结果。',
+    trendDown: '整体趋势反而是准确率随轮次下降，这提示冷启动阶段的样例数量、覆盖的邮件类型多样性会显著影响效果，值得在报告里作为局限性讨论。',
+    noteText: '本演示由本地小型在线学习模型（手写特征 + 逻辑回归式梯度更新，外加按发件人累积的历史反馈统计）实时给出预测：一开始使用手工调优的冷启动先验规则，收到你的标注/纠正后立即做一次梯度更新，模拟"反馈越多、越懂你"的效果，且完全在本机运行、无需调用大模型。',
+  },
+  en: {
+    title: 'Cold-Start + Adaptive Learning Demo',
+    lede: 'Bootstrap the model with an initial batch of labeled emails, then let it keep learning from your corrections. Choose your own email count and round count to simulate "gets better the more you use it."',
+    langBtn: '中文',
+    setupIntro1: '1. Label the first batch: Keep / Skip / Skip (privacy) — this seeds the cold-start data.',
+    setupIntro2: '2. Each round, the system predicts the next batch using every label collected so far.',
+    setupIntro3: '3. Confirm or correct each prediction; feedback rolls into the next round. After the last round, see a per-round accuracy chart and export a CSV.',
+    sourceLabel: 'Data source',
+    sourceSample: 'Sample emails (fixed 18, 2 learning rounds)',
+    sourceGmail: 'My real Gmail inbox',
+    totalLabel: 'Total emails (incl. cold-start batch, max 200)',
+    roundsLabel: 'Learning rounds (excluding cold-start)',
+    batchPreview: (n, m) => `${n} per batch · cold-start + ${m} rounds, ${n * (m + 1)} emails total`,
+    batchTooSmall: 'Batch size would be under 1 — raise total emails or lower the round count',
+    startSample: 'Start with sample emails →',
+    startGmail: 'Fetch from Gmail and start →',
+    gmailLoading: (n) => `Fetching ${n} emails from Gmail… (can take up to about a minute for larger counts)`,
+    gmailTooFew: (n) => `Fetched fewer than ${n} emails — try another inbox or lower the total`,
+    stepColdstart: 'Cold start',
+    stepRound: (i, n) => `Round ${i} / ${n}`,
+    stepSummary: 'Results',
+    keepBtn: 'Keep',
+    skipBtn: 'Skip',
+    privacyBtn: 'Skip (privacy)',
+    coldstartDone: 'Done labeling, start learning →',
+    roundHeading: (i, n) => `Round ${i} / ${n}: prediction from all feedback so far`,
+    aiPredictKeep: 'AI prediction: keep',
+    aiPredictSkip: 'AI prediction: skip',
+    reasonPrefix: 'Reason: ',
+    verdictCorrect: '✓ AI got it right',
+    verdictCorrectedKeep: '✕ Corrected to: keep',
+    verdictCorrectedSkip: '✕ Corrected to: skip',
+    verdictPrivacy: 'Skipped (privacy, excluded from stats)',
+    confirmCorrectBtn: 'AI got it right',
+    confirmFlipBtn: 'Wrong, flip it',
+    loadingRound: 'AI is learning your preferences from the labels so far…',
+    retryBtn: 'Retry',
+    nextRoundBtn: (i) => `Continue to round ${i} →`,
+    toSummaryBtn: 'View stats & chart →',
+    chartTitle: 'Accuracy trend by round',
+    colRound: 'Round',
+    colLabeled: 'Labeled',
+    colCorrect: 'AI correct',
+    colAccuracy: 'Accuracy',
+    colSkipped: 'Privacy-skipped',
+    downloadCsv: 'Download CSV',
+    restartBtn: 'Restart demo',
+    trendUp: 'Accuracy trends upward across rounds — exactly what "adaptive learning" is meant to show: more feedback, a sharper picture of this specific user.',
+    trendFlat: 'Accuracy stayed roughly flat across rounds. That can happen with small samples or scattered preferences; pool data across multiple testers before reading much into a single run.',
+    trendDown: 'Accuracy actually trended down across rounds — worth flagging as a limitation: cold-start sample size and diversity clearly affect results here.',
+    noteText: 'This demo is served by a small local online-learning model (hand-written features + logistic-regression-style gradient updates, plus per-sender running feedback stats): it starts from hand-tuned cold-start priors and takes one gradient step per batch of feedback, simulating "gets better the more you use it" — entirely local, no LLM call involved.',
+  }
+};
+
+function t(key, ...args){
+  const dict = STRINGS[state.lang] || STRINGS.zh;
+  const entry = dict[key];
+  if (typeof entry === 'function') return entry(...args);
+  return entry !== undefined ? entry : key;
+}
+
+let state = {
+  step: 'setup', // setup | coldstart | round | summary
+  lang: 'zh',
+  source: 'sample', // 'sample' | 'gmail'
+  totalInput: 60,
+  roundsInput: 5,
+  batches: null,
+  coldstartChoices: {},
+  rounds: [],
+  currentRoundIdx: 0,
+  gmailLoading: false,
+  gmailError: null
+};
+
+function toggleLang(){
+  state.lang = state.lang === 'zh' ? 'en' : 'zh';
+  render();
+}
+
+function setSource(src){
+  state.source = src;
+  render();
+}
+
+function setTotalInput(v){
+  state.totalInput = Math.min(200, Math.max(0, parseInt(v, 10) || 0));
+  render();
+}
+
+function setRoundsInput(v){
+  state.roundsInput = Math.min(40, Math.max(0, parseInt(v, 10) || 0));
+  render();
+}
+
+function computeBatchSize(){
+  const rounds = Math.max(1, state.roundsInput);
+  return Math.floor(state.totalInput / (rounds + 1));
+}
+
+function initRounds(n){
+  state.rounds = Array.from({length: n}, () => ({predictions: null, decisions: {}, loading: false, error: null}));
+}
+
+async function startFlow(){
+  if (state.source === 'sample') {
+    state.batches = [coldstartEmails, round1Emails, round2Emails];
+    initRounds(2);
+    goToColdstart();
+    return;
+  }
+  const rounds = Math.max(1, state.roundsInput);
+  const batchSize = computeBatchSize();
+  if (batchSize < 1) return;
+  const total = batchSize * (rounds + 1);
+  state.gmailLoading = true;
+  state.gmailError = null;
+  render();
+  try {
+    const resp = await fetch(API_BASE + '/gmail/fetch?count=' + total);
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.detail || ('后端返回状态码 ' + resp.status));
+    }
+    const emails = await resp.json();
+    if (emails.length < total) throw new Error(t('gmailTooFew', total));
+    state.batches = [];
+    for (let i = 0; i < rounds + 1; i++) {
+      state.batches.push(emails.slice(i * batchSize, (i + 1) * batchSize));
+    }
+    initRounds(rounds);
+    state.gmailLoading = false;
+    goToColdstart();
+  } catch (err) {
+    state.gmailLoading = false;
+    state.gmailError = err.message;
+    render();
+  }
+}
+
+function toExamples(emailList, choicesMap){
+  return emailList
+    .filter(e => choicesMap[e.id] === true || choicesMap[e.id] === false)
+    .map(e => ({from: e.from, subject: e.subject, snippet: e.snippet, keep: choicesMap[e.id]}));
+}
+
+function finalChoicesForRound(roundIdx){
+  const r = state.rounds[roundIdx - 1];
+  const map = {};
+  state.batches[roundIdx].forEach(e => {
+    const decided = r.decisions[e.id];
+    if (decided === PRIVACY_SKIP) return;
+    if (decided !== undefined) { map[e.id] = decided; return; }
+    const pred = (r.predictions || []).find(p => p.id === e.id);
+    if (pred) map[e.id] = pred.keep;
+  });
+  return map;
+}
+
+function collectExamplesUpTo(numCompletedRounds){
+  let examples = toExamples(state.batches[0], state.coldstartChoices);
+  for (let j = 1; j <= numCompletedRounds; j++) {
+    examples = examples.concat(toExamples(state.batches[j], finalChoicesForRound(j)));
+  }
+  return examples;
+}
+
+async function classifyEmails(labeledExamples, targetEmails){
+  const resp = await fetch(API_BASE + '/classify', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      examples: labeledExamples,
+      targets: targetEmails.map(e => ({id: e.id, from: e.from, subject: e.subject, snippet: e.snippet})),
+      lang: state.lang
+    })
+  });
+  if (!resp.ok) { throw new Error('后端返回状态码 ' + resp.status); }
+  const parsed = await resp.json();
+  const byId = {};
+  parsed.forEach(p => { byId[p.id] = p; });
+  return targetEmails.map(e => byId[e.id] || {id: e.id, keep: true, reason: '（未返回预测，默认保留）'});
+}
+
+function goToColdstart(){ state.step = 'coldstart'; state.currentRoundIdx = 0; render(); }
+
+function setColdstart(id, value){
+  state.coldstartChoices[id] = value;
+  render();
+}
+
+async function startRound(idx){
+  state.step = 'round';
+  state.currentRoundIdx = idx;
+  const r = state.rounds[idx - 1];
+  r.loading = true;
+  r.error = null;
+  render();
+  try {
+    const examples = collectExamplesUpTo(idx - 1);
+    const predictions = await classifyEmails(examples, state.batches[idx]);
+    r.predictions = predictions;
+  } catch (err) {
+    r.error = '预测失败，请重试。（' + err.message + '）';
+  }
+  r.loading = false;
+  render();
+}
+
+function confirmDecision(roundIdx, id, value){
+  state.rounds[roundIdx - 1].decisions[id] = value;
+  render();
+}
+
+function goToSummary(){ state.step = 'summary'; render(); }
+
+function computeAccuracy(roundIdx){
+  const r = state.rounds[roundIdx - 1];
+  const batch = state.batches[roundIdx];
+  let correct = 0, total = 0, skipped = 0;
+  batch.forEach(e => {
+    const decided = r.decisions[e.id];
+    if (decided === PRIVACY_SKIP) { skipped++; return; }
+    const pred = (r.predictions || []).find(p => p.id === e.id);
+    if (!pred || decided === undefined) return;
+    total++;
+    if (decided === pred.keep) correct++;
+  });
+  return {correct, total, skipped};
+}
+
+function resetDemo(){
+  state = {
+    step: 'setup',
+    lang: state.lang,
+    source: state.source,
+    totalInput: state.totalInput,
+    roundsInput: state.roundsInput,
+    batches: null,
+    coldstartChoices: {},
+    rounds: [],
+    currentRoundIdx: 0,
+    gmailLoading: false,
+    gmailError: null
+  };
+  render();
+}
+
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  app.appendChild(buildHeader());
+  if (state.step !== 'setup') app.appendChild(buildProgress());
+
+  if (state.step === 'setup') app.appendChild(buildSetup());
+  else if (state.step === 'coldstart') app.appendChild(buildColdstart());
+  else if (state.step === 'round') app.appendChild(buildRound());
+  else if (state.step === 'summary') app.appendChild(buildSummary());
+
+  app.appendChild(buildNote());
+}
+
+function buildHeader(){
+  const div = document.createElement('div');
+  div.className = 'header-row';
+  const left = document.createElement('div');
+  left.innerHTML = '<div class="eyebrow">SMART EMAIL PRIORITIZATION</div>' +
+    '<h1>' + t('title') + '</h1>' +
+    '<p class="lede">' + t('lede') + '</p>';
+  const langBtn = document.createElement('button');
+  langBtn.className = 'lang-btn';
+  langBtn.textContent = t('langBtn');
+  langBtn.onclick = toggleLang;
+  div.appendChild(left);
+  div.appendChild(langBtn);
+  return div;
+}
+
+function buildProgress(){
+  const totalSteps = state.batches ? state.batches.length : 1;
+  let currentIdx, label;
+  if (state.step === 'coldstart') { currentIdx = 0; label = t('stepColdstart'); }
+  else if (state.step === 'round') { currentIdx = state.currentRoundIdx; label = t('stepRound', state.currentRoundIdx, totalSteps - 1); }
+  else { currentIdx = totalSteps; label = t('stepSummary'); }
+  const pct = Math.round((currentIdx / totalSteps) * 100);
+  const div = document.createElement('div');
+  div.className = 'progress-wrap';
+  div.innerHTML =
+    '<div class="progress-text">' + label + '</div>' +
+    '<div class="progress-track"><div class="progress-fill" style="width:' + pct + '%"></div></div>';
+  return div;
+}
+
+function buildSetup(){
+  const div = document.createElement('div');
+  const rounds = Math.max(1, state.roundsInput);
+  const batchSize = computeBatchSize();
+
+  div.innerHTML =
+    '<div class="card">' +
+    '<p style="margin:0 0 8px;font-size:14px;">' + t('setupIntro1') + '</p>' +
+    '<p style="margin:0 0 8px;font-size:14px;">' + t('setupIntro2') + '</p>' +
+    '<p style="margin:0;font-size:14px;">' + t('setupIntro3') + '</p>' +
+    '</div>';
+
+  const form = document.createElement('div');
+  form.className = 'card';
+
+  const sourceField = document.createElement('div');
+  sourceField.className = 'field';
+  sourceField.innerHTML = '<label>' + t('sourceLabel') + '</label>';
+  const radioRow = document.createElement('div');
+  radioRow.className = 'radio-row';
+  const sampleOpt = document.createElement('div');
+  sampleOpt.className = 'radio-option' + (state.source === 'sample' ? ' selected' : '');
+  sampleOpt.textContent = t('sourceSample');
+  sampleOpt.onclick = () => setSource('sample');
+  const gmailOpt = document.createElement('div');
+  gmailOpt.className = 'radio-option' + (state.source === 'gmail' ? ' selected' : '');
+  gmailOpt.textContent = t('sourceGmail');
+  gmailOpt.onclick = () => setSource('gmail');
+  radioRow.appendChild(sampleOpt);
+  radioRow.appendChild(gmailOpt);
+  sourceField.appendChild(radioRow);
+  form.appendChild(sourceField);
+
+  if (state.source === 'gmail') {
+    const totalField = document.createElement('div');
+    totalField.className = 'field';
+    totalField.innerHTML = '<label>' + t('totalLabel') + '</label>' +
+      '<input type="number" min="3" max="200" value="' + state.totalInput + '" oninput="setTotalInput(this.value)">';
+    form.appendChild(totalField);
+
+    const roundsField = document.createElement('div');
+    roundsField.className = 'field';
+    roundsField.innerHTML = '<label>' + t('roundsLabel') + '</label>' +
+      '<input type="number" min="1" max="40" value="' + state.roundsInput + '" oninput="setRoundsInput(this.value)">';
+    form.appendChild(roundsField);
+
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = batchSize < 1 ? t('batchTooSmall') : t('batchPreview', batchSize, rounds);
+    form.appendChild(hint);
+  }
+
+  if (state.gmailError) {
+    const errBox = document.createElement('div');
+    errBox.className = 'error-box';
+    errBox.textContent = state.gmailError;
+    form.appendChild(errBox);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'actions-bottom';
+  if (state.source === 'gmail' && state.gmailLoading) {
+    actions.innerHTML = '<div class="loading"><div class="spinner"></div>' + t('gmailLoading', batchSize * (rounds + 1)) + '</div>';
+  } else {
+    const startBtn = document.createElement('button');
+    startBtn.className = 'primary';
+    startBtn.textContent = state.source === 'gmail' ? t('startGmail') : t('startSample');
+    if (state.source === 'gmail' && batchSize < 1) startBtn.disabled = true;
+    startBtn.onclick = startFlow;
+    actions.appendChild(startBtn);
+  }
+  form.appendChild(actions);
+  div.appendChild(form);
+  return div;
+}
+
+function buildColdstart(){
+  const div = document.createElement('div');
+  const batch = state.batches[0];
+  batch.forEach(e => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const choice = state.coldstartChoices[e.id];
+    card.innerHTML =
+      '<div class="email-from">' + e.from + '</div>' +
+      '<div class="email-subject">' + e.subject + '</div>' +
+      '<div class="email-snippet">' + e.snippet + '</div>' +
+      '<div class="btn-row">' +
+        '<button class="choice-keep' + (choice === true ? ' selected' : '') + '" onclick="setColdstart(\'' + e.id + '\', true)">' + t('keepBtn') + '</button>' +
+        '<button class="choice-skip' + (choice === false ? ' selected' : '') + '" onclick="setColdstart(\'' + e.id + '\', false)">' + t('skipBtn') + '</button>' +
+        '<button class="choice-privacy' + (choice === PRIVACY_SKIP ? ' selected' : '') + '" onclick="setColdstart(\'' + e.id + '\', \'' + PRIVACY_SKIP + '\')">' + t('privacyBtn') + '</button>' +
+      '</div>';
+    div.appendChild(card);
+  });
+  const allChosen = batch.every(e => state.coldstartChoices[e.id] !== undefined);
+  const actions = document.createElement('div');
+  actions.className = 'actions-bottom';
+  const doneBtn = document.createElement('button');
+  doneBtn.className = 'primary';
+  doneBtn.disabled = !allChosen;
+  doneBtn.textContent = t('coldstartDone');
+  doneBtn.onclick = () => startRound(1);
+  actions.appendChild(doneBtn);
+  div.appendChild(actions);
+  return div;
+}
+
+function buildRound(){
+  const idx = state.currentRoundIdx;
+  const numRounds = state.rounds.length;
+  const r = state.rounds[idx - 1];
+  const batch = state.batches[idx];
+  const div = document.createElement('div');
+
+  if (r.loading) {
+    div.innerHTML = '<div class="loading"><div class="spinner"></div>' + t('loadingRound') + '</div>';
+    return div;
+  }
+  if (r.error) {
+    const errDiv = document.createElement('div');
+    errDiv.className = 'error-box';
+    errDiv.textContent = r.error;
+    div.appendChild(errDiv);
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'primary';
+    retryBtn.textContent = t('retryBtn');
+    retryBtn.onclick = () => startRound(idx);
+    div.appendChild(retryBtn);
+    return div;
+  }
+
+  const heading = document.createElement('p');
+  heading.style.cssText = 'font-size:14px;color:var(--muted);margin:0 0 16px;';
+  heading.textContent = t('roundHeading', idx, numRounds);
+  div.appendChild(heading);
+
+  (r.predictions || []).forEach(pred => {
+    const email = batch.find(e => e.id === pred.id);
+    if (!email) return;
+    const decided = r.decisions[pred.id];
+    const card = document.createElement('div');
+    card.className = 'card';
+    let html =
+      '<div class="email-from">' + email.from + '</div>' +
+      '<div class="email-subject">' + email.subject + '</div>' +
+      '<div class="email-snippet">' + email.snippet + '</div>' +
+      '<div>' +
+      '<span class="badge ' + (pred.keep ? 'keep' : 'skip') + '">' + (pred.keep ? t('aiPredictKeep') : t('aiPredictSkip')) + '</span>';
+    if (decided === PRIVACY_SKIP) {
+      html += '<span class="badge privacy">' + t('verdictPrivacy') + '</span>';
+    } else if (decided !== undefined) {
+      if (decided === pred.keep) {
+        html += '<span class="badge correct">' + t('verdictCorrect') + '</span>';
+      } else {
+        html += '<span class="badge corrected">' + (decided ? t('verdictCorrectedKeep') : t('verdictCorrectedSkip')) + '</span>';
+      }
+    }
+    html += '</div>' +
+      '<div class="reason">' + t('reasonPrefix') + (pred.reason || '—') + '</div>' +
+      '<div class="btn-row">' +
+        '<button onclick="confirmDecision(' + idx + ', \'' + pred.id + '\', ' + pred.keep + ')">' + t('confirmCorrectBtn') + '</button>' +
+        '<button onclick="confirmDecision(' + idx + ', \'' + pred.id + '\', ' + (!pred.keep) + ')">' + t('confirmFlipBtn') + '</button>' +
+        '<button onclick="confirmDecision(' + idx + ', \'' + pred.id + '\', \'' + PRIVACY_SKIP + '\')">' + t('privacyBtn') + '</button>' +
+      '</div>';
+    card.innerHTML = html;
+    div.appendChild(card);
+  });
+
+  const allDecided = batch.every(e => r.decisions[e.id] !== undefined);
+  const actions = document.createElement('div');
+  actions.className = 'actions-bottom';
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'primary';
+  nextBtn.disabled = !allDecided;
+  if (idx < numRounds) {
+    nextBtn.textContent = t('nextRoundBtn', idx + 1);
+    nextBtn.onclick = () => startRound(idx + 1);
+  } else {
+    nextBtn.textContent = t('toSummaryBtn');
+    nextBtn.onclick = goToSummary;
+  }
+  actions.appendChild(nextBtn);
+  div.appendChild(actions);
+  return div;
+}
+
+function buildAccuracyChartSVG(stats){
+  const w = 640, h = 200, padL = 36, padR = 12, padT = 16, padB = 24;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+  const n = stats.length;
+  const x = (i) => padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+  const y = (pct) => padT + plotH - (pct / 100) * plotH;
+
+  let grid = '';
+  [0, 50, 100].forEach(pct => {
+    grid += '<line x1="' + padL + '" y1="' + y(pct) + '" x2="' + (w - padR) + '" y2="' + y(pct) + '" stroke="var(--line)" stroke-width="1"/>';
+    grid += '<text x="' + (padL - 8) + '" y="' + (y(pct) + 4) + '" font-size="10" fill="var(--muted)" text-anchor="end">' + pct + '%</text>';
+  });
+
+  const points = stats.map((s, i) => {
+    const pct = s.total ? (100 * s.correct / s.total) : 0;
+    return {x: x(i), y: y(pct), pct};
+  });
+  const polyline = points.map(p => p.x + ',' + p.y).join(' ');
+  let dots = '';
+  points.forEach((p, i) => {
+    dots += '<circle cx="' + p.x + '" cy="' + p.y + '" r="3.5" fill="var(--ink)"/>';
+    dots += '<text x="' + p.x + '" y="' + (p.y - 10) + '" font-size="10" fill="var(--ink)" text-anchor="middle">' + p.pct.toFixed(0) + '%</text>';
+    dots += '<text x="' + p.x + '" y="' + (h - 6) + '" font-size="10" fill="var(--muted)" text-anchor="middle">' + (i + 1) + '</text>';
+  });
+
+  return '<svg class="chart-svg" viewBox="0 0 ' + w + ' ' + h + '" xmlns="http://www.w3.org/2000/svg">' +
+    grid +
+    '<polyline points="' + polyline + '" fill="none" stroke="var(--ai-correct)" stroke-width="2"/>' +
+    dots +
+    '</svg>';
+}
+
+function downloadCsv(stats){
+  const header = 'round,labeled,ai_correct,accuracy_pct,privacy_skipped\n';
+  const rows = stats.map((s, i) => {
+    const pct = s.total ? (100 * s.correct / s.total).toFixed(1) : '';
+    return (i + 1) + ',' + s.total + ',' + s.correct + ',' + pct + ',' + s.skipped;
+  }).join('\n');
+  const blob = new Blob([header + rows], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'email_priority_round_stats.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function trendText(stats){
+  const withData = stats.filter(s => s.total > 0);
+  if (withData.length < 2) return t('trendFlat');
+  const first = withData[0].correct / withData[0].total;
+  const last = withData[withData.length - 1].correct / withData[withData.length - 1].total;
+  if (last > first + 0.001) return t('trendUp');
+  if (last < first - 0.001) return t('trendDown');
+  return t('trendFlat');
+}
+
+function buildSummary(){
+  const numRounds = state.rounds.length;
+  const stats = [];
+  for (let i = 1; i <= numRounds; i++) stats.push(computeAccuracy(i));
+
+  const div = document.createElement('div');
+
+  const overallCorrect = stats.reduce((a, s) => a + s.correct, 0);
+  const overallTotal = stats.reduce((a, s) => a + s.total, 0);
+  const overallSkipped = stats.reduce((a, s) => a + s.skipped, 0);
+  const first = stats[0], last = stats[stats.length - 1];
+
+  const statGrid = document.createElement('div');
+  statGrid.className = 'stat-grid';
+  statGrid.innerHTML =
+    '<div class="stat-card"><div class="stat-num">' + (first.total ? Math.round(100 * first.correct / first.total) : 0) + '%</div><div class="stat-label">' + t('stepRound', 1, numRounds) + '</div></div>' +
+    '<div class="stat-card"><div class="stat-num">' + (last.total ? Math.round(100 * last.correct / last.total) : 0) + '%</div><div class="stat-label">' + t('stepRound', numRounds, numRounds) + '</div></div>';
+  div.appendChild(statGrid);
+
+  const chartCard = document.createElement('div');
+  chartCard.className = 'card chart-wrap';
+  chartCard.innerHTML = '<p style="margin:0 0 10px;font-size:14px;font-weight:600;">' + t('chartTitle') + '</p>' + buildAccuracyChartSVG(stats);
+  div.appendChild(chartCard);
+
+  const tableCard = document.createElement('div');
+  tableCard.className = 'card';
+  let tableHtml = '<table class="stats-table"><thead><tr>' +
+    '<th>' + t('colRound') + '</th><th>' + t('colLabeled') + '</th><th>' + t('colCorrect') + '</th><th>' + t('colAccuracy') + '</th><th>' + t('colSkipped') + '</th>' +
+    '</tr></thead><tbody>';
+  stats.forEach((s, i) => {
+    const pct = s.total ? Math.round(100 * s.correct / s.total) + '%' : '—';
+    tableHtml += '<tr><td>' + (i + 1) + '</td><td>' + s.total + '</td><td>' + s.correct + '</td><td>' + pct + '</td><td>' + s.skipped + '</td></tr>';
+  });
+  tableHtml += '</tbody></table>' +
+    '<p style="margin:0;font-size:14px;">' + trendText(stats) + '</p>';
+  tableCard.innerHTML = tableHtml;
+  div.appendChild(tableCard);
+
+  const actions = document.createElement('div');
+  actions.className = 'actions-bottom';
+  const csvBtn = document.createElement('button');
+  csvBtn.textContent = t('downloadCsv');
+  csvBtn.onclick = () => downloadCsv(stats);
+  const restartBtn = document.createElement('button');
+  restartBtn.onclick = resetDemo;
+  restartBtn.textContent = t('restartBtn');
+  actions.appendChild(csvBtn);
+  actions.appendChild(restartBtn);
+  div.appendChild(actions);
+
+  return div;
+}
+
+function buildNote(){
+  const div = document.createElement('div');
+  div.className = 'note';
+  div.textContent = t('noteText');
+  return div;
+}
+
+render();
+</script>
+</body>
+</html>
