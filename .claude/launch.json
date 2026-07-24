@@ -6,6 +6,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "5500"],
       "port": 5500
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "backend/venv/bin/uvicorn",
+      "runtimeArgs": ["app:app", "--port", "8000", "--app-dir", "backend"],
+      "port": 8000
     }
   ]
 }

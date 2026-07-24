@@ -272,18 +272,29 @@ function setSource(src){
 }
 
 function setTotalInput(v){
-  state.totalInput = Math.min(200, Math.max(0, parseInt(v, 10) || 0));
-  render();
+  state.totalInput = v;
+  updateBatchHint();
 }
 
 function setRoundsInput(v){
-  state.roundsInput = Math.min(40, Math.max(0, parseInt(v, 10) || 0));
-  render();
+  state.roundsInput = v;
+  updateBatchHint();
 }
 
 function computeBatchSize(){
-  const rounds = Math.max(1, state.roundsInput);
-  return Math.floor(state.totalInput / (rounds + 1));
+  const rounds = Math.max(1, parseInt(state.roundsInput, 10) || 1);
+  const total = Math.max(0, parseInt(state.totalInput, 10) || 0);
+  return Math.floor(total / (rounds + 1));
+}
+
+function updateBatchHint(){
+  const hint = document.getElementById('batchHint');
+  const startBtn = document.getElementById('startBtn');
+  if (!hint || !startBtn) return;
+  const rounds = Math.max(1, parseInt(state.roundsInput, 10) || 1);
+  const batchSize = computeBatchSize();
+  hint.textContent = batchSize < 1 ? t('batchTooSmall') : t('batchPreview', batchSize, rounds);
+  startBtn.disabled = batchSize < 1;
 }
 
 function initRounds(n){
@@ -297,7 +308,7 @@ async function startFlow(){
     goToColdstart();
     return;
   }
-  const rounds = Math.max(1, state.roundsInput);
+  const rounds = Math.max(1, parseInt(state.roundsInput, 10) || 1);
   const batchSize = computeBatchSize();
   if (batchSize < 1) return;
   const total = batchSize * (rounds + 1);
@@ -326,10 +337,21 @@ async function startFlow(){
   }
 }
 
+// Structural fields populated by /gmail/fetch (undefined for sample-mode
+// entries, which is fine — JSON.stringify drops undefined keys and the
+// backend treats missing fields as neutral defaults).
+const STRUCTURAL_FIELDS = [
+  'to_count', 'cc_count', 'in_to', 'has_attachment', 'is_bulk_header',
+  'is_reply_thread', 'sent_hour', 'reciprocal'
+];
+
 function toExamples(emailList, choicesMap){
   return emailList
     .filter(e => choicesMap[e.id] === true || choicesMap[e.id] === false)
-    .map(e => ({from: e.from, subject: e.subject, snippet: e.snippet, keep: choicesMap[e.id]}));
+    .map(e => ({
+      from: e.from, subject: e.subject, snippet: e.snippet, keep: choicesMap[e.id],
+      ...Object.fromEntries(STRUCTURAL_FIELDS.map(f => [f, e[f]]))
+    }));
 }
 
 function finalChoicesForRound(roundIdx){
@@ -359,7 +381,10 @@ async function classifyEmails(labeledExamples, targetEmails){
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       examples: labeledExamples,
-      targets: targetEmails.map(e => ({id: e.id, from: e.from, subject: e.subject, snippet: e.snippet})),
+      targets: targetEmails.map(e => ({
+        id: e.id, from: e.from, subject: e.subject, snippet: e.snippet,
+        ...Object.fromEntries(STRUCTURAL_FIELDS.map(f => [f, e[f]]))
+      })),
       lang: state.lang
     })
   });
@@ -527,6 +552,7 @@ function buildSetup(){
 
     const hint = document.createElement('p');
     hint.className = 'hint';
+    hint.id = 'batchHint';
     hint.textContent = batchSize < 1 ? t('batchTooSmall') : t('batchPreview', batchSize, rounds);
     form.appendChild(hint);
   }
@@ -545,6 +571,7 @@ function buildSetup(){
   } else {
     const startBtn = document.createElement('button');
     startBtn.className = 'primary';
+    startBtn.id = 'startBtn';
     startBtn.textContent = state.source === 'gmail' ? t('startGmail') : t('startSample');
     if (state.source === 'gmail' && batchSize < 1) startBtn.disabled = true;
     startBtn.onclick = startFlow;

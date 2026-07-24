@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enron Spot-Check — Heuristic Label Validation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #F7F5F0;
+    --card: #FFFFFF;
+    --ink: #22262B;
+    --muted: #6B7178;
+    --line: #E4E1D8;
+    --keep: #0E7C6F;
+    --keep-bg: #E6F2EE;
+    --skip: #C85A3A;
+    --skip-bg: #FBEAE3;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;line-height:1.6;}
+  h1,h2,h3{font-family:'Space Grotesk',sans-serif;}
+  #app{max-width:720px;margin:0 auto;padding:32px 20px 60px;}
+  .eyebrow{font-size:12px;letter-spacing:0.06em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;}
+  .lede{font-size:14px;color:var(--muted);margin:0 0 28px;max-width:60ch;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:12px;}
+  .email-from{font-size:12px;color:var(--muted);margin-bottom:2px;word-break:break-word;}
+  .email-subject{font-size:15px;font-weight:500;margin-bottom:4px;word-break:break-word;}
+  .email-snippet{font-size:13px;color:var(--muted);margin-bottom:14px;}
+
+  .btn-row{display:flex;gap:10px;flex-wrap:wrap;}
+  button{font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;border-radius:9px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);padding:9px 16px;transition:all .15s ease;}
+  button:hover{border-color:var(--muted);}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink);}
+  button.primary:hover{opacity:.88;}
+  button.primary:disabled{background:var(--line);border-color:var(--line);color:var(--muted);cursor:not-allowed;}
+  button.choice-keep.selected{background:var(--keep-bg);border-color:var(--keep);color:var(--keep);}
+  button.choice-skip.selected{background:var(--skip-bg);border-color:var(--skip);color:var(--skip);}
+
+  .actions-bottom{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+  .loading{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted);padding:40px 0;justify-content:center;}
+  .spinner{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--ink);animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .error-box{background:var(--skip-bg);border:1px solid var(--skip);color:var(--skip);border-radius:10px;padding:14px 16px;font-size:13px;margin-bottom:16px;}
+  .note{font-size:12px;color:var(--muted);margin-top:24px;border-top:1px solid var(--line);padding-top:16px;}
+  .progress-sticky{position:sticky;top:0;background:var(--bg);padding:10px 0;font-size:13px;color:var(--muted);font-weight:500;z-index:5;border-bottom:1px solid var(--line);margin-bottom:12px;}
+  .success-box{background:var(--keep-bg);border:1px solid var(--keep);color:var(--keep);border-radius:10px;padding:14px 16px;font-size:15px;margin-bottom:16px;font-weight:500;}
+  .stats-table{width:100%;border-collapse:collapse;font-size:13px;margin:4px 0 16px;}
+  .stats-table th,.stats-table td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;}
+  .stats-table th{color:var(--muted);font-weight:500;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const SAMPLE_URL = 'enron_spotcheck_sample.json';
+
+let state = {
+  step: 'setup', // setup | label | done
+  reviewerName: '',
+  sample: null, // {emails, heuristic_labels}
+  labels: {},
+  loading: false,
+  loadError: null
+};
+
+function setReviewerName(v){ state.reviewerName = v; }
+
+async function loadSample(){
+  state.loading = true;
+  state.loadError = null;
+  render();
+  try {
+    const resp = await fetch(SAMPLE_URL);
+    if (!resp.ok) throw new Error('Could not fetch ' + SAMPLE_URL + ' (status ' + resp.status + ')');
+    const data = await resp.json();
+    if (!data.emails || !data.heuristic_labels) throw new Error('Unexpected file shape — missing emails/heuristic_labels');
+    state.sample = data;
+    state.labels = {};
+    state.loading = false;
+    state.step = 'label';
+    render();
+  } catch (err) {
+    state.loading = false;
+    state.loadError = 'Run backend/enron/sample_spotcheck.py first, and serve this page from the project root. ' + err.message;
+    render();
+  }
+}
+
+function setLabel(id, value){
+  state.labels[id] = value;
+  render();
+}
+
+function computeAgreement(){
+  const emails = state.sample.emails;
+  const heuristic = state.sample.heuristic_labels;
+  let agree = 0, total = 0;
+  const disagreements = [];
+  emails.forEach(e => {
+    const manual = state.labels[e.id];
+    if (manual === undefined) return;
+    total++;
+    const h = heuristic[e.id];
+    if (manual === h) agree++;
+    else disagreements.push({from: e.from, subject: e.subject, heuristic: h, manual});
+  });
+  return {agree, total, pct: total ? (100 * agree / total) : 0, disagreements};
+}
+
+function exportResults(){
+  const agreement = computeAgreement();
+  const payload = {
+    format: 'enron-spotcheck-result-v1',
+    reviewer: state.reviewerName || 'anonymous',
+    agreement_pct: Math.round(agreement.pct * 10) / 10,
+    agree: agreement.agree,
+    total: agreement.total,
+    disagreements: agreement.disagreements,
+    manual_labels: state.labels,
+    heuristic_labels: state.sample.heuristic_labels
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = (state.reviewerName || 'anonymous').replace(/[^a-z0-9_-]/gi, '_');
+  a.href = url;
+  a.download = 'enron_spotcheck_labeled_' + safeName + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  state.step = 'done';
+  render();
+}
+
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  app.appendChild(buildHeader());
+  if (state.step === 'setup') app.appendChild(buildSetup());
+  else if (state.step === 'label') app.appendChild(buildLabel());
+  else if (state.step === 'done') app.appendChild(buildDone());
+  app.appendChild(buildNote());
+}
+
+function buildHeader(){
+  const div = document.createElement('div');
+  div.innerHTML = '<div class="eyebrow">SMART EMAIL PRIORITIZATION</div>' +
+    '<h1>Enron Spot-Check</h1>' +
+    '<p class="lede">Label each Enron email Keep / Skip based on your own read of it — no context on how it was auto-labeled. When you\'re done, this tool reveals how often your judgment agreed with the folder-based heuristic used to pretrain the model. That agreement rate is the "heuristic label quality" number for the report.</p>';
+  return div;
+}
+
+function buildSetup(){
+  const div = document.createElement('div');
+  const form = document.createElement('div');
+  form.className = 'card';
+
+  const nameField = document.createElement('div');
+  nameField.innerHTML = '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:500;">Your name (used in the exported filename)</label>' +
+    '<input type="text" placeholder="e.g. vignesh" value="' + state.reviewerName + '" oninput="setReviewerName(this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;margin-bottom:14px;">';
+  form.appendChild(nameField);
+
+  if (state.loadError) {
+    const errBox = document.createElement('div');
+    errBox.className = 'error-box';
+    errBox.textContent = state.loadError;
+    form.appendChild(errBox);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'actions-bottom';
+  if (state.loading) {
+    actions.innerHTML = '<div class="loading"><div class="spinner"></div>Loading sample…</div>';
+  } else {
+    const btn = document.createElement('button');
+    btn.className = 'primary';
+    btn.textContent = 'Load spot-check sample →';
+    btn.onclick = loadSample;
+    actions.appendChild(btn);
+  }
+  form.appendChild(actions);
+  div.appendChild(form);
+  return div;
+}
+
+function buildLabel(){
+  const div = document.createElement('div');
+  const emails = state.sample.emails;
+  const done = emails.filter(e => state.labels[e.id] !== undefined).length;
+  const sticky = document.createElement('div');
+  sticky.className = 'progress-sticky';
+  sticky.textContent = 'Labeled ' + done + ' / ' + emails.length;
+  div.appendChild(sticky);
+
+  emails.forEach(e => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const choice = state.labels[e.id];
+    card.innerHTML =
+      '<div class="email-from">' + e.from + '</div>' +
+      '<div class="email-subject">' + e.subject + '</div>' +
+      '<div class="email-snippet">' + e.snippet + '</div>' +
+      '<div class="btn-row">' +
+        '<button class="choice-keep' + (choice === true ? ' selected' : '') + '" onclick="setLabel(\'' + e.id + '\', true)">Keep</button>' +
+        '<button class="choice-skip' + (choice === false ? ' selected' : '') + '" onclick="setLabel(\'' + e.id + '\', false)">Skip</button>' +
+      '</div>';
+    div.appendChild(card);
+  });
+
+  const allDone = emails.every(e => state.labels[e.id] !== undefined);
+  const actions = document.createElement('div');
+  actions.className = 'actions-bottom';
+  const exportBtn = document.createElement('button');
+  exportBtn.className = 'primary';
+  exportBtn.disabled = !allDone;
+  exportBtn.textContent = 'See agreement rate & export →';
+  exportBtn.onclick = exportResults;
+  actions.appendChild(exportBtn);
+  div.appendChild(actions);
+  return div;
+}
+
+function buildDone(){
+  const div = document.createElement('div');
+  const agreement = computeAgreement();
+  const box = document.createElement('div');
+  box.className = 'success-box';
+  box.textContent = 'Heuristic label agreement: ' + agreement.agree + ' / ' + agreement.total +
+    ' (' + agreement.pct.toFixed(1) + '%). File downloaded — send it to whoever is compiling results.';
+  div.appendChild(box);
+
+  if (agreement.disagreements.length) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    let html = '<p style="margin:0 0 8px;font-size:13px;font-weight:600;">Disagreements (heuristic label vs. your label):</p>' +
+      '<table class="stats-table"><thead><tr><th>Subject</th><th>Heuristic</th><th>You</th></tr></thead><tbody>';
+    agreement.disagreements.forEach(d => {
+      html += '<tr><td>' + d.subject + '</td><td>' + (d.heuristic ? 'Keep' : 'Skip') + '</td><td>' + (d.manual ? 'Keep' : 'Skip') + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    card.innerHTML = html;
+    div.appendChild(card);
+  }
+  return div;
+}
+
+function buildNote(){
+  const div = document.createElement('div');
+  div.className = 'note';
+  div.textContent = 'Setup: from the project root, run backend/enron/sample_spotcheck.py to produce enron_spotcheck_sample.json, then serve this folder with python3 -m http.server 5500 and open this page — opening it directly as file:// will not be able to fetch the sample JSON.';
+  return div;
+}
+
+render();
+</script>
+</body>
+</html>

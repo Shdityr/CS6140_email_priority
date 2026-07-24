@@ -64,8 +64,8 @@ Use this `http.server` route rather than double-clicking the files open — open
 1. Open `email_extractor.html`.
 2. Enter your name (used in the exported filename).
 3. Pick "My real Gmail inbox," choose how many emails to fetch (try 40–60 to start), click fetch.
-4. Label every email: **Keep** / **Skip** / **Skip (privacy)**. Use "Skip (privacy)" for anything you don't want counted or shared — but note the subject/snippet text is still stored in the exported file, so if an email is genuinely sensitive, open the exported `.json` afterward and delete that entry by hand before sending it on.
-5. Click **Export labeled data** — downloads a `labeled_<yourname>_<count>.json` file.
+4. Every email defaults to **Skip** — you don't need to click anything for most of them. Only click **Keep** for emails you'd actually want surfaced, or **Skip (privacy)** for anything you don't want counted or shared (note: the subject/snippet text is still stored in the exported file even for privacy-skips, so if an email is genuinely sensitive, open the exported `.json` afterward and delete that entry by hand before sending it on).
+5. Click **Export labeled data** at any point — no need to review every card first, downloads a `labeled_<yourname>_<count>.json` file.
 6. Send that file to whoever is compiling results (Slack, email, shared drive — it contains subject lines and short snippets, not full email bodies or your password).
 
 ## 5. Running experiments (whoever compiles results)

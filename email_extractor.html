@@ -85,14 +85,23 @@ const SAMPLE_POOL = [
   {id:'s6', from:'HR Department', subject:'Benefits enrollment deadline reminder', snippet:'Please complete annual benefits enrollment by month end.'}
 ];
 
-function setTesterName(v){ state.testerName = v; render(); }
+function setTesterName(v){ state.testerName = v; }
 function setSource(src){ state.source = src; render(); }
-function setTotalInput(v){ state.totalInput = Math.min(200, Math.max(6, parseInt(v, 10) || 0)); render(); }
+function setTotalInput(v){ state.totalInput = v; }
+function clampTotalInput(){ return Math.min(200, Math.max(6, parseInt(state.totalInput, 10) || 60)); }
+
+// Everything defaults to Skip — you only need to click Keep or Skip
+// (privacy) for the exceptions, instead of clicking every single card.
+function defaultLabels(pool){
+  const labels = {};
+  pool.forEach(e => { labels[e.id] = false; });
+  return labels;
+}
 
 async function startFetch(){
   if (state.source === 'sample') {
     state.pool = SAMPLE_POOL;
-    state.labels = {};
+    state.labels = defaultLabels(SAMPLE_POOL);
     state.step = 'label';
     render();
     return;
@@ -101,7 +110,7 @@ async function startFetch(){
   state.gmailError = null;
   render();
   try {
-    const resp = await fetch(API_BASE + '/gmail/fetch?count=' + state.totalInput);
+    const resp = await fetch(API_BASE + '/gmail/fetch?count=' + clampTotalInput());
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({}));
       throw new Error(body.detail || ('Backend returned status ' + resp.status));
@@ -109,7 +118,7 @@ async function startFetch(){
     const emails = await resp.json();
     if (!emails.length) throw new Error('No emails returned — check backend/.env credentials.');
     state.pool = emails;
-    state.labels = {};
+    state.labels = defaultLabels(emails);
     state.gmailLoading = false;
     state.step = 'label';
     render();
@@ -125,10 +134,19 @@ function setLabel(id, value){
   render();
 }
 
+// Structural fields populated by /gmail/fetch (undefined for sample-mode
+// entries, which is fine — JSON.stringify drops undefined keys and the
+// backend treats missing fields as neutral defaults).
+const STRUCTURAL_FIELDS = [
+  'to_count', 'cc_count', 'in_to', 'has_attachment', 'is_bulk_header',
+  'is_reply_thread', 'sent_hour', 'reciprocal'
+];
+
 function exportLabels(){
   const emails = state.pool.map(e => ({
     id: e.id, from: e.from, subject: e.subject, snippet: e.snippet,
-    label: state.labels[e.id]
+    label: state.labels[e.id],
+    ...Object.fromEntries(STRUCTURAL_FIELDS.map(f => [f, e[f]]))
   }));
   const payload = {
     format: 'email-priority-labeled-v1',
@@ -237,10 +255,14 @@ function buildSetup(){
 
 function buildLabel(){
   const div = document.createElement('div');
-  const done = state.pool.filter(e => state.labels[e.id] !== undefined).length;
+  const keepCount = state.pool.filter(e => state.labels[e.id] === true).length;
+  const privacyCount = state.pool.filter(e => state.labels[e.id] === PRIVACY_SKIP).length;
   const sticky = document.createElement('div');
   sticky.className = 'progress-sticky';
-  sticky.textContent = 'Labeled ' + done + ' / ' + state.pool.length;
+  // Everything defaults to Skip, so there's nothing to "finish" — this just
+  // shows how many you've flipped away from the default so far.
+  sticky.textContent = state.pool.length + ' emails, default Skip — ' +
+    keepCount + ' marked Keep, ' + privacyCount + ' marked Skip (privacy)';
   div.appendChild(sticky);
 
   state.pool.forEach(e => {
@@ -259,12 +281,10 @@ function buildLabel(){
     div.appendChild(card);
   });
 
-  const allDone = state.pool.every(e => state.labels[e.id] !== undefined);
   const actions = document.createElement('div');
   actions.className = 'actions-bottom';
   const exportBtn = document.createElement('button');
   exportBtn.className = 'primary';
-  exportBtn.disabled = !allDone;
   exportBtn.textContent = 'Export labeled data (.json) →';
   exportBtn.onclick = exportLabels;
   actions.appendChild(exportBtn);

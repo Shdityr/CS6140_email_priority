@@ -20,6 +20,8 @@
     --skip-bg: #FBEAE3;
     --band: #2F6FED;
     --band-bg: rgba(47,111,237,0.14);
+    --baseline: #9B8F5C;
+    --baseline-bg: rgba(155,143,92,0.14);
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;line-height:1.6;}
@@ -58,7 +60,11 @@
   .dataset-row:last-child{border-bottom:none;}
 
   .chart-wrap{margin:8px 0 20px;}
-  .stats-table{width:100%;border-collapse:collapse;font-size:13px;margin:4px 0 16px;}
+  .chart-legend{display:flex;gap:16px;margin:0 0 6px;font-size:12px;color:var(--muted);}
+  .chart-legend span{display:inline-flex;align-items:center;gap:6px;}
+  .chart-legend i{width:10px;height:10px;border-radius:50%;display:inline-block;}
+  .table-scroll{overflow-x:auto;margin:4px 0 16px;}
+  .stats-table{width:100%;border-collapse:collapse;font-size:13px;margin:0;}
   .stats-table th,.stats-table td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;}
   .stats-table th{color:var(--muted);font-weight:500;}
   .progress-track{height:6px;background:var(--line);border-radius:999px;overflow:hidden;margin-top:8px;}
@@ -87,15 +93,22 @@ const STRINGS = {
     runBtn: 'Run experiment →',
     runningText: (t, T, r, R) => `Trial ${t} / ${T}, round ${r} / ${R}…`,
     chartTitle: 'Accuracy by training-set size (mean ± std across trials)',
+    legendPersonalized: 'Personalized (learns from feedback)',
+    legendBaseline: 'Cold-start baseline (frozen prior, no feedback)',
     colRound: 'Round',
     colMean: 'Mean accuracy',
     colStd: 'Std dev',
+    colBaselineMean: 'Baseline mean',
+    colBaselineStd: 'Baseline std dev',
     colTrials: 'Trials',
     downloadCsv: 'Download raw CSV (all trials)',
     restartBtn: 'Start a new experiment',
     trendUp: 'Accuracy trends upward as more training data accumulates — the core claim of "adaptive learning" holds up under repeated random-order trials, not just a single lucky run.',
     trendFlat: 'Accuracy is roughly flat across rounds. That can be a real finding (e.g. sender-history features need more repeat senders to kick in) — worth discussing as a limitation rather than assuming it is noise, since this is already averaged over multiple shuffles.',
     trendDown: 'Accuracy trends downward as more data accumulates — worth investigating (e.g. regularization pulling too hard toward the prior, or conflicting labels across testers).',
+    liftText: (lift) => lift >= 0
+      ? `On average, personalization adds ${lift.toFixed(1)} percentage points of accuracy over the frozen cold-start baseline, averaged across rounds — that gap is what the feedback loop is actually buying you.`
+      : `On average, the personalized model actually scored ${Math.abs(lift).toFixed(1)} points lower than the frozen cold-start baseline across rounds — worth investigating (e.g. too few labels per sender, or regularization not pulling hard enough toward the prior) before claiming personalization helps here.`,
     noteText: 'This tool never touches Gmail — it only calls the shared backend\'s /classify endpoint, which runs the same local logistic-regression-style model used by the interactive demo. Anyone can run it as long as the backend (uvicorn app:app --port 8000) is reachable; no .env / Gmail credentials are required for this tool specifically.',
   },
   zh: {
@@ -113,15 +126,22 @@ const STRINGS = {
     runBtn: '运行实验 →',
     runningText: (t, T, r, R) => `第 ${t} / ${T} 组打乱，第 ${r} / ${R} 轮…`,
     chartTitle: '准确率 vs 训练集大小（多组打乱的均值 ± 标准差）',
+    legendPersonalized: '个性化（从反馈中学习）',
+    legendBaseline: '冷启动基线（固定先验，不学习反馈）',
     colRound: '轮次',
     colMean: '平均准确率',
     colStd: '标准差',
+    colBaselineMean: '基线平均准确率',
+    colBaselineStd: '基线标准差',
     colTrials: '试验组数',
     downloadCsv: '下载原始CSV（所有试验）',
     restartBtn: '开始新实验',
     trendUp: '随着训练数据增多，准确率呈上升趋势——这是在多次随机打乱下重复验证的结果，而不是单次运气好，"自适应学习"的核心结论站得住。',
     trendFlat: '各轮准确率大体持平。这可能是真实的发现（比如发件人历史特征需要更多重复发件人才能生效），值得作为局限性讨论，而不是当作噪声忽略——毕竟已经是多组打乱取平均后的结果。',
     trendDown: '随着数据增多准确率反而下降，值得进一步排查（比如正则化把权重拉得太靠近先验，或者不同标注者之间的标签有冲突）。',
+    liftText: (lift) => lift >= 0
+      ? `平均来看，个性化相比固定的冷启动基线，准确率高出 ${lift.toFixed(1)} 个百分点（各轮平均）——这就是反馈学习真正带来的提升。`
+      : `平均来看，个性化模型反而比固定的冷启动基线低了 ${Math.abs(lift).toFixed(1)} 个百分点（各轮平均）——在下结论说"个性化有用"之前，值得先排查一下原因（比如每个发件人的标签太少，或者正则化没有把权重拉得足够靠近先验）。`,
     noteText: '本工具完全不接触 Gmail——只调用共享后端的 /classify 接口，跑的是与互动演示相同的本地逻辑回归式模型。只要后端（uvicorn app:app --port 8000）在跑，任何人都能用这个工具，不需要为它单独配置 .env / Gmail 凭据。',
   }
 };
@@ -146,8 +166,16 @@ let state = {
 };
 
 function toggleLang(){ state.lang = state.lang === 'en' ? 'zh' : 'en'; render(); }
-function setBatchSizeInput(v){ state.batchSizeInput = Math.max(1, parseInt(v, 10) || 1); render(); }
-function setTrialsInput(v){ state.trialsInput = Math.min(30, Math.max(1, parseInt(v, 10) || 1)); render(); }
+function setBatchSizeInput(v){ state.batchSizeInput = v; updatePoolHint(); }
+function setTrialsInput(v){ state.trialsInput = v; updatePoolHint(); }
+
+// Structural fields populated by /gmail/fetch at extraction time (absent
+// on older exported datasets, which is fine — the backend treats missing
+// fields as neutral defaults).
+const STRUCTURAL_FIELDS = [
+  'to_count', 'cc_count', 'in_to', 'has_attachment', 'is_bulk_header',
+  'is_reply_thread', 'sent_hour', 'reciprocal'
+];
 
 function combinedPool(){
   const all = [];
@@ -156,7 +184,8 @@ function combinedPool(){
       if (e.label === true || e.label === false) {
         all.push({
           id: ds.tester + '::' + e.id, from: e.from, subject: e.subject, snippet: e.snippet,
-          label: e.label, tester: ds.tester
+          label: e.label, tester: ds.tester,
+          ...Object.fromEntries(STRUCTURAL_FIELDS.map(f => [f, e[f]]))
         });
       }
     });
@@ -166,7 +195,18 @@ function combinedPool(){
 
 function computeNumRounds(){
   const pool = combinedPool();
-  return Math.floor(pool.length / state.batchSizeInput) - 1;
+  const batchSize = Math.max(1, parseInt(state.batchSizeInput, 10) || 1);
+  return Math.floor(pool.length / batchSize) - 1;
+}
+
+function updatePoolHint(){
+  const hint = document.getElementById('poolHint');
+  const runBtn = document.getElementById('runBtn');
+  if (!hint || !runBtn) return;
+  const poolSize = combinedPool().length;
+  const numRounds = computeNumRounds();
+  hint.textContent = numRounds < 1 ? t('poolTooSmall') : t('poolPreview', poolSize, numRounds);
+  runBtn.disabled = numRounds < 1;
 }
 
 async function handleFiles(fileList){
@@ -210,7 +250,10 @@ async function classifyEmails(labeledExamples, targetEmails){
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       examples: labeledExamples,
-      targets: targetEmails.map(e => ({id: e.id, from: e.from, subject: e.subject, snippet: e.snippet})),
+      targets: targetEmails.map(e => ({
+        id: e.id, from: e.from, subject: e.subject, snippet: e.snippet,
+        ...Object.fromEntries(STRUCTURAL_FIELDS.map(f => [f, e[f]]))
+      })),
       lang: state.lang
     })
   });
@@ -220,8 +263,8 @@ async function classifyEmails(labeledExamples, targetEmails){
 
 async function runExperiment(){
   const pool = combinedPool();
-  const batchSize = state.batchSizeInput;
-  const trials = state.trialsInput;
+  const batchSize = Math.max(1, parseInt(state.batchSizeInput, 10) || 1);
+  const trials = Math.min(30, Math.max(1, parseInt(state.trialsInput, 10) || 1));
   const numRounds = Math.floor(pool.length / batchSize) - 1;
   if (numRounds < 1) return;
 
@@ -236,15 +279,25 @@ async function runExperiment(){
     const batches = [];
     for (let i = 0; i <= numRounds; i++) batches.push(shuffled.slice(i * batchSize, (i + 1) * batchSize));
 
-    let examples = batches[0].map(e => ({from: e.from, subject: e.subject, snippet: e.snippet, keep: e.label}));
+    let examples = batches[0].map(e => ({
+      from: e.from, subject: e.subject, snippet: e.snippet, keep: e.label,
+      ...Object.fromEntries(STRUCTURAL_FIELDS.map(f => [f, e[f]]))
+    }));
     const trialRounds = [];
     for (let r = 1; r <= numRounds; r++) {
       state.progress = {trial: ti + 1, totalTrials: trials, round: r, totalRounds: numRounds};
       render();
       const targets = batches[r];
-      let preds;
+      let preds, baselinePreds;
       try {
-        preds = await classifyEmails(examples, targets);
+        // Personalized: current accumulated feedback trains the weights.
+        // Baseline: examples=[] makes the backend skip training entirely and
+        // predict with the untouched cold-start prior (neutral sender_hist) —
+        // that's the frozen "before any feedback" comparison point.
+        [preds, baselinePreds] = await Promise.all([
+          classifyEmails(examples, targets),
+          classifyEmails([], targets)
+        ]);
       } catch (err) {
         state.running = false;
         state.step = 'setup';
@@ -252,27 +305,42 @@ async function runExperiment(){
         render();
         return;
       }
-      let correct = 0, total = 0;
+      let correct = 0, total = 0, baselineCorrect = 0, baselineTotal = 0;
       targets.forEach(e => {
         const pred = preds.find(p => p.id === e.id);
         total++;
         if (pred && pred.keep === e.label) correct++;
+        const basePred = baselinePreds.find(p => p.id === e.id);
+        baselineTotal++;
+        if (basePred && basePred.keep === e.label) baselineCorrect++;
       });
-      trialRounds.push({round: r, correct, total});
-      examples = examples.concat(targets.map(e => ({from: e.from, subject: e.subject, snippet: e.snippet, keep: e.label})));
+      trialRounds.push({round: r, correct, total, baselineCorrect, baselineTotal});
+      examples = examples.concat(targets.map(e => ({
+        from: e.from, subject: e.subject, snippet: e.snippet, keep: e.label,
+        ...Object.fromEntries(STRUCTURAL_FIELDS.map(f => [f, e[f]]))
+      })));
     }
     perTrial.push(trialRounds);
   }
 
-  const aggregated = [];
-  for (let r = 1; r <= numRounds; r++) {
-    const pcts = perTrial.map(tr => tr[r - 1]).filter(Boolean).map(x => x.total ? (100 * x.correct / x.total) : 0);
+  function summarize(pcts) {
     const mean = pcts.reduce((a, b) => a + b, 0) / pcts.length;
     const variance = pcts.reduce((a, b) => a + (b - mean) * (b - mean), 0) / pcts.length;
-    aggregated.push({round: r, mean, std: Math.sqrt(variance), n: pcts.length});
+    return {mean, std: Math.sqrt(variance), n: pcts.length};
   }
 
-  state.results = {perTrial, aggregated, numRounds, trials, batchSize, poolSize: pool.length};
+  const aggregated = [];
+  const baselineAggregated = [];
+  for (let r = 1; r <= numRounds; r++) {
+    const rounds = perTrial.map(tr => tr[r - 1]).filter(Boolean);
+    const pcts = rounds.map(x => x.total ? (100 * x.correct / x.total) : 0);
+    const basePcts = rounds.map(x => x.baselineTotal ? (100 * x.baselineCorrect / x.baselineTotal) : 0);
+    aggregated.push({round: r, ...summarize(pcts)});
+    baselineAggregated.push({round: r, ...summarize(basePcts)});
+  }
+  const lift = aggregated.reduce((a, s, i) => a + (s.mean - baselineAggregated[i].mean), 0) / aggregated.length;
+
+  state.results = {perTrial, aggregated, baselineAggregated, lift, numRounds, trials, batchSize, poolSize: pool.length};
   state.running = false;
   state.step = 'results';
   render();
@@ -364,6 +432,7 @@ function buildSetup(){
     const numRounds = computeNumRounds();
     const hint = document.createElement('p');
     hint.className = 'hint';
+    hint.id = 'poolHint';
     hint.textContent = numRounds < 1 ? t('poolTooSmall') : t('poolPreview', poolSize, numRounds);
     form.appendChild(hint);
 
@@ -371,6 +440,7 @@ function buildSetup(){
     actions.className = 'actions-bottom';
     const runBtn = document.createElement('button');
     runBtn.className = 'primary';
+    runBtn.id = 'runBtn';
     runBtn.disabled = numRounds < 1;
     runBtn.textContent = t('runBtn');
     runBtn.onclick = runExperiment;
@@ -398,10 +468,10 @@ function buildRunning(){
   return div;
 }
 
-function buildBandChartSVG(aggregated){
+function buildBandChartSVG(seriesList){
   const w = 680, h = 220, padL = 36, padR = 12, padT = 16, padB = 24;
   const plotW = w - padL - padR, plotH = h - padT - padB;
-  const n = aggregated.length;
+  const n = seriesList[0].data.length;
   const x = (i) => padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
   const yOf = (pct) => padT + plotH - (Math.max(0, Math.min(100, pct)) / 100) * plotH;
 
@@ -411,34 +481,36 @@ function buildBandChartSVG(aggregated){
     grid += '<text x="' + (padL - 8) + '" y="' + (yOf(pct) + 4) + '" font-size="10" fill="var(--muted)" text-anchor="end">' + pct + '%</text>';
   });
 
-  const upper = aggregated.map((s, i) => x(i) + ',' + yOf(s.mean + s.std)).join(' ');
-  const lowerRev = aggregated.slice().reverse().map((s, i) => x(n - 1 - i) + ',' + yOf(s.mean - s.std)).join(' ');
-  const bandPoints = upper + ' ' + lowerRev;
-
-  const meanLine = aggregated.map((s, i) => x(i) + ',' + yOf(s.mean)).join(' ');
-  let dots = '';
-  aggregated.forEach((s, i) => {
-    dots += '<circle cx="' + x(i) + '" cy="' + yOf(s.mean) + '" r="3.5" fill="var(--band)"/>';
-    dots += '<text x="' + x(i) + '" y="' + (yOf(s.mean) - 10) + '" font-size="10" fill="var(--ink)" text-anchor="middle">' + s.mean.toFixed(0) + '%</text>';
-    dots += '<text x="' + x(i) + '" y="' + (h - 6) + '" font-size="10" fill="var(--muted)" text-anchor="middle">' + s.round + '</text>';
+  let body = '';
+  seriesList.forEach(({data, color, bg}) => {
+    const upper = data.map((s, i) => x(i) + ',' + yOf(s.mean + s.std)).join(' ');
+    const lowerRev = data.slice().reverse().map((s, i) => x(n - 1 - i) + ',' + yOf(s.mean - s.std)).join(' ');
+    const meanLine = data.map((s, i) => x(i) + ',' + yOf(s.mean)).join(' ');
+    body += '<polygon points="' + upper + ' ' + lowerRev + '" fill="' + bg + '" stroke="none"/>';
+    body += '<polyline points="' + meanLine + '" fill="none" stroke="' + color + '" stroke-width="2"/>';
+    data.forEach((s, i) => {
+      body += '<circle cx="' + x(i) + '" cy="' + yOf(s.mean) + '" r="3.5" fill="' + color + '"/>';
+    });
+  });
+  let axisLabels = '';
+  seriesList[0].data.forEach((s, i) => {
+    axisLabels += '<text x="' + x(i) + '" y="' + (h - 6) + '" font-size="10" fill="var(--muted)" text-anchor="middle">' + s.round + '</text>';
   });
 
   return '<svg class="chart-svg" viewBox="0 0 ' + w + ' ' + h + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">' +
-    grid +
-    '<polygon points="' + bandPoints + '" fill="var(--band-bg)" stroke="none"/>' +
-    '<polyline points="' + meanLine + '" fill="none" stroke="var(--band)" stroke-width="2"/>' +
-    dots +
+    grid + body + axisLabels +
     '</svg>';
 }
 
 function downloadCsv(){
   const r = state.results;
-  const header = 'trial,round,total,correct,accuracy_pct\n';
+  const header = 'trial,round,total,correct,accuracy_pct,baseline_total,baseline_correct,baseline_accuracy_pct\n';
   const rows = [];
   r.perTrial.forEach((trialRounds, ti) => {
     trialRounds.forEach(rd => {
       const pct = rd.total ? (100 * rd.correct / rd.total).toFixed(1) : '';
-      rows.push((ti + 1) + ',' + rd.round + ',' + rd.total + ',' + rd.correct + ',' + pct);
+      const basePct = rd.baselineTotal ? (100 * rd.baselineCorrect / rd.baselineTotal).toFixed(1) : '';
+      rows.push((ti + 1) + ',' + rd.round + ',' + rd.total + ',' + rd.correct + ',' + pct + ',' + rd.baselineTotal + ',' + rd.baselineCorrect + ',' + basePct);
     });
   });
   const blob = new Blob([header + rows.join('\n')], {type: 'text/csv'});
@@ -471,18 +543,30 @@ function buildResults(){
 
   const chartCard = document.createElement('div');
   chartCard.className = 'card chart-wrap';
-  chartCard.innerHTML = '<p style="margin:0 0 10px;font-size:14px;font-weight:600;">' + t('chartTitle') + '</p>' + buildBandChartSVG(r.aggregated);
+  const legend = '<div class="chart-legend">' +
+    '<span><i style="background:var(--band)"></i>' + t('legendPersonalized') + '</span>' +
+    '<span><i style="background:var(--baseline)"></i>' + t('legendBaseline') + '</span>' +
+    '</div>';
+  chartCard.innerHTML = '<p style="margin:0 0 10px;font-size:14px;font-weight:600;">' + t('chartTitle') + '</p>' + legend +
+    buildBandChartSVG([
+      {data: r.aggregated, color: 'var(--band)', bg: 'var(--band-bg)'},
+      {data: r.baselineAggregated, color: 'var(--baseline)', bg: 'var(--baseline-bg)'}
+    ]);
   div.appendChild(chartCard);
 
   const tableCard = document.createElement('div');
   tableCard.className = 'card';
-  let tableHtml = '<table class="stats-table"><thead><tr>' +
-    '<th>' + t('colRound') + '</th><th>' + t('colMean') + '</th><th>' + t('colStd') + '</th><th>' + t('colTrials') + '</th>' +
+  let tableHtml = '<div class="table-scroll"><table class="stats-table"><thead><tr>' +
+    '<th>' + t('colRound') + '</th><th>' + t('colMean') + '</th><th>' + t('colStd') + '</th>' +
+    '<th>' + t('colBaselineMean') + '</th><th>' + t('colBaselineStd') + '</th><th>' + t('colTrials') + '</th>' +
     '</tr></thead><tbody>';
-  r.aggregated.forEach(s => {
-    tableHtml += '<tr><td>' + s.round + '</td><td>' + s.mean.toFixed(1) + '%</td><td>±' + s.std.toFixed(1) + '%</td><td>' + s.n + '</td></tr>';
+  r.aggregated.forEach((s, i) => {
+    const b = r.baselineAggregated[i];
+    tableHtml += '<tr><td>' + s.round + '</td><td>' + s.mean.toFixed(1) + '%</td><td>±' + s.std.toFixed(1) + '%</td>' +
+      '<td>' + b.mean.toFixed(1) + '%</td><td>±' + b.std.toFixed(1) + '%</td><td>' + s.n + '</td></tr>';
   });
-  tableHtml += '</tbody></table><p style="margin:0;font-size:14px;">' + trendText(r.aggregated) + '</p>';
+  tableHtml += '</tbody></table></div><p style="margin:0 0 8px;font-size:14px;">' + trendText(r.aggregated) + '</p>' +
+    '<p style="margin:0;font-size:14px;font-weight:500;">' + t('liftText', r.lift) + '</p>';
   tableCard.innerHTML = tableHtml;
   div.appendChild(tableCard);
 

@@ -1,3 +1,5 @@
 .env
 venv/
 __pycache__/
+enron/raw/
+enron/enron_labeled.json
