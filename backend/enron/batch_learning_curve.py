@@ -26,14 +26,22 @@ def to_email(row, cls):
     kwargs = dict(
         id=None, **{"from": row["from"]}, subject=row["subject"], snippet=row["snippet"],
         to_count=row.get("to_count", 1), cc_count=row.get("cc_count", 0),
+        in_to=row.get("in_to", True),
         has_attachment=row.get("has_attachment", False),
         is_bulk_header=row.get("is_bulk_header", False),
         is_reply_thread=row.get("is_reply_thread", False),
         sent_hour=row.get("sent_hour"),
+        reciprocal=row.get("reciprocal", False),
     )
     if cls is LabeledEmail:
         kwargs["keep"] = row["label"]
     return cls(**kwargs)
+
+
+def usable_rows(rows):
+    # Real extractor exports can contain label == "privacy_skip" entries —
+    # exclude those from scoring, same as email_priority_test.html does.
+    return [r for r in rows if r["label"] is True or r["label"] is False]
 
 
 def score(examples, targets_with_labels):
@@ -58,15 +66,18 @@ def main():
     args = ap.parse_args()
 
     with open(args.labeled, encoding="utf-8") as f:
-        rows = json.load(f)["emails"]
+        rows = usable_rows(json.load(f)["emails"])
 
     random.seed(args.seed)
     keep_rows = [r for r in rows if r["label"]]
     skip_rows = [r for r in rows if not r["label"]]
-    half = args.n // 2
-    sample = random.sample(keep_rows, half) + random.sample(skip_rows, args.n - half)
+    half = min(args.n // 2, len(keep_rows), len(skip_rows))
+    if half * 2 < args.n:
+        print(f"Note: only {len(keep_rows)} keep / {len(skip_rows)} skip usable rows available; "
+              f"using a balanced {half*2} instead of the requested {args.n}.")
+    sample = random.sample(keep_rows, half) + random.sample(skip_rows, half)
 
-    num_rounds = args.n // args.batch_size - 1
+    num_rounds = len(sample) // args.batch_size - 1
     personalized_by_round = [[] for _ in range(num_rounds)]
     baseline_by_round = [[] for _ in range(num_rounds)]
 
@@ -85,7 +96,7 @@ def main():
 
             examples = examples + [to_email(row, LabeledEmail) for row in target_rows]
 
-    print(f"n={args.n} batch_size={args.batch_size} trials={args.trials} rounds={num_rounds}")
+    print(f"n={len(sample)} batch_size={args.batch_size} trials={args.trials} rounds={num_rounds}")
     print(f"{'round':<8}{'personalized':>14}{'baseline':>12}{'lift':>10}")
     for r in range(num_rounds):
         p = sum(personalized_by_round[r]) / len(personalized_by_round[r])

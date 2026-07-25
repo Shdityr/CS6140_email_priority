@@ -75,9 +75,14 @@ PRIOR_WEIGHTS = {
     "has_attachment": 0.5,
     # Nearly every legitimate bulk/marketing sender includes List-Unsubscribe
     # (an anti-spam-complaint compliance norm) or Precedence/Auto-Submitted;
-    # personal mail essentially never does — a much more reliable bulk-mail
-    # signal than guessing from body keywords, hence the large weight.
-    "is_bulk_header": -3.0,
+    # personal mail essentially never does. Originally -3.0, but real
+    # collected data showed that's too strong a universal prior: for a user
+    # actively job-hunting, LinkedIn/Indeed/Glassdoor job alerts are legit
+    # bulk mail they *want* — a cold-start-only test on that data scored 0%
+    # recall on their keep class. Moderated to -1.5 so it doesn't dominate on
+    # its own; correcting for individual cases like that is what sender_hist
+    # (per-user online learning) is for, not a one-size-fits-all prior.
+    "is_bulk_header": -1.5,
     "is_reply_thread": 1.2,
     # Deliberately small/noisy: automated mail can just as easily fire during
     # business hours, so this is a weak prior, not a strong rule.
@@ -120,6 +125,11 @@ EPOCHS = 25
 # contradictory examples can't send a weight wildly off in 25 epochs — keeps
 # explanations stable instead of overfitting to noise in a tiny sample.
 L2_TOWARD_PRIOR = 0.08
+# Missing a keep-worthy email (false negative) is worse than letting an
+# occasional skip-worthy one through (false positive), so mistakes on keep-
+# labeled examples get amplified in the gradient relative to skip-labeled
+# ones — trades some precision for recall on the class that actually matters.
+KEEP_CLASS_WEIGHT = 2.0
 
 
 class Email(BaseModel):
@@ -191,7 +201,7 @@ def feature_vector(email: Email, sender_stats: dict) -> dict:
     text = f"{email.subject} {email.snippet}"
     text_lower = text.lower()
     sender_lower = email.from_.lower()
-    exclaim_count = text.count("!") + text.count("!")
+    exclaim_count = text.count("!") + text.count("！")
     return {
         "bias": 1.0,
         "urgent_kw": 1.0 if any(k in text_lower for k in URGENT_KEYWORDS) else 0.0,
@@ -232,7 +242,8 @@ def train_weights(examples: list[LabeledEmail], sender_stats: dict) -> dict:
         for x, y in vectors:
             z = dot(weights, x)
             pred = sigmoid(z)
-            error = y - pred
+            class_weight = KEEP_CLASS_WEIGHT if y == 1.0 else 1.0
+            error = class_weight * (y - pred)
             for k in FEATURE_ORDER:
                 grad = error * x[k] - L2_TOWARD_PRIOR * (weights[k] - PRIOR_WEIGHTS[k])
                 weights[k] += LEARNING_RATE * grad

@@ -33,7 +33,11 @@ def main():
     args = ap.parse_args()
 
     with open(args.labeled, encoding="utf-8") as f:
-        rows = json.load(f)["emails"]
+        raw_rows = json.load(f)["emails"]
+    # Real extractor exports can contain label == "privacy_skip" entries —
+    # exclude those from scoring, same as email_priority_test.html does.
+    rows = [r for r in raw_rows if r["label"] is True or r["label"] is False]
+    is_enron = bool(rows) and "folder" in rows[0]
 
     correct = 0
     tp = fp = tn = fn = 0
@@ -44,10 +48,12 @@ def main():
         email_obj = Email(
             id=None, **{"from": r["from"]}, subject=r["subject"], snippet=r["snippet"],
             to_count=r.get("to_count", 1), cc_count=r.get("cc_count", 0),
+            in_to=r.get("in_to", True),
             has_attachment=r.get("has_attachment", False),
             is_bulk_header=r.get("is_bulk_header", False),
             is_reply_thread=r.get("is_reply_thread", False),
             sent_hour=r.get("sent_hour"),
+            reciprocal=r.get("reciprocal", False),
         )
         x = feature_vector(email_obj, {})  # {} sender_stats = true cold start, sender_hist=0
         score = sigmoid(dot(PRIOR_WEIGHTS, x))
@@ -88,11 +94,12 @@ def main():
         skip_mean = feature_sums["skip"][k] / class_counts["skip"] if class_counts["skip"] else 0.0
         print(f"{k:<22}{keep_mean:>8.3f}{skip_mean:>8.3f}")
 
-    print()
-    print("Caveat: 'keep' class = employee's own SENT mail (they're the sender, not")
-    print("recipient) — has_attachment/is_bulk_header/is_reply_thread/many_recipients/")
-    print("business_hours are structurally about RECEIVING mail, so 'skip' (received")
-    print("deleted/bulk mail) is the fairer test bed for those specific features.")
+    if is_enron:
+        print()
+        print("Caveat: 'keep' class = employee's own SENT mail (they're the sender, not")
+        print("recipient) — has_attachment/is_bulk_header/is_reply_thread/many_recipients/")
+        print("business_hours are structurally about RECEIVING mail, so 'skip' (received")
+        print("deleted/bulk mail) is the fairer test bed for those specific features.")
 
 
 if __name__ == "__main__":
