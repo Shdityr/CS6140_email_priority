@@ -4,7 +4,7 @@
     {
       "name": "static-site",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "5500"],
+      "runtimeArgs": ["-m", "http.server", "5500", "--directory", "/Users/shdityr/Documents/NortheasternUniversity/CS6140/Project"],
       "port": 5500
     },
     {

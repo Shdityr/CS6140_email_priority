@@ -76,6 +76,19 @@ Use this `http.server` route rather than double-clicking the files open — open
 4. Click **Run experiment**. It calls the backend once per round per trial — no more clicking needed.
 5. Read the chart/table, and click **Download raw CSV** — one row per (trial, round), so you can pool multiple experiment runs (e.g. different batch sizes) in Excel/pandas for the report.
 
+## 6. Reproducing the report's figures and tables
+
+These are the standalone scripts behind the report's quantitative results (Sections 8–9) — separate from the HTML tools above, and requiring no browser:
+
+```bash
+cd backend
+venv/bin/python gmail_eval/make_figures.py          # Figures 1 and 2 (personalization learning curves)
+venv/bin/python llm_eval/claude_classify.py --labeled ~/Downloads/labeled_Zhidian_200.json   # Table 2 (hand-crafted vs. Claude API)
+venv/bin/python enron/evaluate_prior.py --labeled enron/enron_labeled.json                    # Enron cold-start sanity check
+```
+
+`llm_eval/claude_classify.py` calls the real Claude API and needs `ANTHROPIC_API_KEY` set in `backend/.env`. `gmail_eval/make_figures.py` expects the three labeled exports at `~/Downloads/labeled_Zhidian_200.json`, `~/Downloads/labeled_Vignesh_60.json`, and `~/Downloads/labeled_Sathvik_100.json` (the default download location the extractor tool saves to); it writes figures to `figures/` at the project root.
+
 ## Troubleshooting
 
 - **"Missing GMAIL_ADDRESS or GMAIL_APP_PASSWORD"** — you haven't filled in `backend/.env`, or the backend was started before you saved it (restart uvicorn after editing `.env`).

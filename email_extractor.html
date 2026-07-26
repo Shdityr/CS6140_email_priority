@@ -310,7 +310,7 @@ function buildDone(){
 function buildNote(){
   const div = document.createElement('div');
   div.className = 'note';
-  div.textContent = 'Setup: run the shared backend locally (uvicorn app:app --port 8000 --reload from the backend/ folder) with your own Gmail app password in backend/.env — see SETUP.md. This tool only calls /gmail/fetch; it never sends anything to a third-party AI.';
+  div.textContent = 'Setup: run the shared backend locally (uvicorn app:app --port 8000 --reload from the backend/ folder) with your own Gmail app password in backend/.env — see README.md. This tool only calls /gmail/fetch; it never sends anything to a third-party AI.';
   return div;
 }
 

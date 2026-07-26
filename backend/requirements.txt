@@ -9,3 +9,7 @@ uvicorn==0.51.0
 # live FastAPI service, which only reads the resulting enron_prior.json.
 numpy==2.3.5
 scikit-learn==1.7.2
+
+# Eval-only dep for backend/llm_eval/claude_classify.py — not needed by the
+# live FastAPI service.
+anthropic==0.120.0

@@ -1,3 +1,9 @@
 .DS_Store
 enron_spotcheck_sample.json
 enron_spotcheck_labeled_*.json
+
+# Saved course-page webpages (Canvas "Save As" bundles) — not project content
+Final Project Guidelines.html
+Final Project Guidelines_files/
+Report Requirement.html
+Report Requirement_files/

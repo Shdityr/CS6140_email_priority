@@ -424,7 +424,7 @@ def gmail_fetch(count: int = 18):
     if not GMAIL_ADDRESS or not GMAIL_APP_PASSWORD:
         raise HTTPException(
             status_code=400,
-            detail="缺少 GMAIL_ADDRESS / GMAIL_APP_PASSWORD，请先在 backend/.env 里配置 / Missing GMAIL_ADDRESS or GMAIL_APP_PASSWORD, please configure backend/.env first",
+            detail="Missing GMAIL_ADDRESS or GMAIL_APP_PASSWORD, please configure backend/.env first",
         )
     count = max(1, min(count, MAX_GMAIL_FETCH))
     imap = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -450,7 +450,7 @@ def gmail_fetch(count: int = 18):
             results.append({
                 "id": f"real_{i}",
                 "from": sender,
-                "subject": decode_mime_words(msg.get("Subject", "(无主题)")),
+                "subject": decode_mime_words(msg.get("Subject", "(no subject)")),
                 "snippet": extract_snippet(msg),
                 "to_count": to_count,
                 "cc_count": cc_count,
@@ -463,7 +463,7 @@ def gmail_fetch(count: int = 18):
             })
         return results
     except imaplib.IMAP4.error as exc:
-        raise HTTPException(status_code=401, detail=f"Gmail 登录失败 / Gmail login failed：{exc}")
+        raise HTTPException(status_code=401, detail=f"Gmail login failed: {exc}")
     finally:
         try:
             imap.logout()

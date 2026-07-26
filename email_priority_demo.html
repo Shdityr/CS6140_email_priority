@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>邮件优先级助手 · 冷启动与自适应学习演示</title>
+<title>Email Priority Assistant · Cold-Start &amp; Adaptive Learning Demo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
@@ -30,16 +30,15 @@
     margin:0;
     background:var(--bg);
     color:var(--ink);
-    font-family:'IBM Plex Sans','PingFang SC','Microsoft YaHei',sans-serif;
+    font-family:'IBM Plex Sans',sans-serif;
     line-height:1.6;
   }
-  h1,h2,h3,.step-label{font-family:'Space Grotesk','PingFang SC','Microsoft YaHei',sans-serif;}
+  h1,h2,h3,.step-label{font-family:'Space Grotesk',sans-serif;}
   #app{max-width:720px;margin:0 auto;padding:32px 20px 60px;}
   .header-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
   .eyebrow{font-size:12px;letter-spacing:0.06em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
   h1{font-size:24px;font-weight:600;margin:0 0 8px;}
   .lede{font-size:14px;color:var(--muted);margin:0 0 28px;max-width:56ch;}
-  .lang-btn{flex-shrink:0;margin-top:2px;}
 
   .progress-wrap{margin-bottom:28px;}
   .progress-text{font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:500;}
@@ -107,89 +106,36 @@ const PRIVACY_SKIP = '__privacy_skip__';
 const API_BASE = 'http://127.0.0.1:8000';
 
 const coldstartEmails = [
-  {id:'c1', from:'David Chen · VP工程', subject:'Re: Q3路线图评审 —— 周五前需要你的意见', snippet:'能否在我们同步会议前，先看一下附件里的路线图文档？'},
-  {id:'c2', from:'TechWeekly 订阅', subject:'本季度值得关注的5个AI趋势', snippet:'你的每周科技资讯摘要已送达。'},
-  {id:'c3', from:'IT安全团队', subject:'你的密码将在3天后过期', snippet:'请尽快重置密码，以免账号被锁定。'},
-  {id:'c4', from:'BestDeals4U', subject:'全场5折 —— 仅限今天！！！', snippet:'限时抢购将于午夜结束，不要错过。'},
-  {id:'c5', from:'Sarah · 同事', subject:'明天一起吃午饭？', snippet:'明天中午一起吃个饭，聊聊近况怎么样？'},
-  {id:'c6', from:'人力资源部', subject:'年度福利登记截止提醒', snippet:'请在月底前完成年度福利登记。'}
+  {id:'c1', from:'David Chen · VP Engineering', subject:'Re: Q3 roadmap review — need your input by Friday', snippet:'Could you take a look at the roadmap doc before our sync?'},
+  {id:'c2', from:'TechWeekly Newsletter', subject:'5 AI trends worth watching this quarter', snippet:'Your weekly tech briefing has arrived.'},
+  {id:'c3', from:'IT Security Team', subject:'Your password expires in 3 days', snippet:'Please reset your password soon to avoid being locked out.'},
+  {id:'c4', from:'BestDeals4U', subject:'50% off everything — today only!!!', snippet:'Flash sale ends at midnight, don\'t miss out.'},
+  {id:'c5', from:'Sarah · Coworker', subject:'Lunch tomorrow?', snippet:'Want to grab lunch tomorrow and catch up?'},
+  {id:'c6', from:'HR Department', subject:'Annual benefits enrollment deadline reminder', snippet:'Please complete annual benefits enrollment by end of month.'}
 ];
 
 const round1Emails = [
-  {id:'r1_1', from:'LinkedIn', subject:'你有3条新的连接请求', snippet:'看看谁想和你建立联系。'},
-  {id:'r1_2', from:'David Chen · VP工程', subject:'紧急：生产环境故障复盘', snippet:'请所有人在10分钟内加入会议。'},
-  {id:'r1_3', from:'全员大会', subject:'本月全员大会录屏已发布', snippet:'错过的同事可以在这里回看本月更新。'},
-  {id:'r1_4', from:'Amazon', subject:'你的包裹已发货', snippet:'预计3天内送达，点击查看物流详情。'},
-  {id:'r1_5', from:'猎头顾问', subject:'一个不容错过的职业机会', snippet:'有个非常适合你背景的职位，方便聊聊吗？'},
-  {id:'r1_6', from:'财务团队', subject:'需要你审批报销单', snippet:'你的主管正在等待你提交报销审批。'}
+  {id:'r1_1', from:'LinkedIn', subject:'You have 3 new connection requests', snippet:'See who wants to connect with you.'},
+  {id:'r1_2', from:'David Chen · VP Engineering', subject:'Urgent: production incident postmortem', snippet:'Everyone please join the call within 10 minutes.'},
+  {id:'r1_3', from:'All-Hands', subject:'This month\'s all-hands recording is up', snippet:'Catch up here if you missed this month\'s updates.'},
+  {id:'r1_4', from:'Amazon', subject:'Your package has shipped', snippet:'Estimated delivery in 3 days — click for tracking details.'},
+  {id:'r1_5', from:'Recruiter', subject:'An opportunity you don\'t want to miss', snippet:'Found a role that fits your background well — want to chat?'},
+  {id:'r1_6', from:'Finance Team', subject:'Expense report needs your approval', snippet:'Your manager is waiting on your expense approval.'}
 ];
 
 const round2Emails = [
-  {id:'r2_1', from:'Slack摘要', subject:'你有12条未读提及', snippet:'过去24小时内你被提到了12次。'},
-  {id:'r2_2', from:'David Chen · VP工程', subject:'这次发布干得漂亮', snippet:'这周辛苦了，效果非常好，谢谢你的付出。'},
-  {id:'r2_3', from:'会议委员会', subject:'2027 AI系统大会征稿启事', snippet:'诚邀提交论文，截稿日期为下月底。'},
-  {id:'r2_4', from:'银行提醒', subject:'检测到异常登录尝试', snippet:'发现一次来自新设备的登录，请确认是否为本人操作。'},
-  {id:'r2_5', from:'每周趣味问答', subject:'本周知识挑战来啦', snippet:'测测你的知识储备，赢取小奖励。'},
-  {id:'r2_6', from:'Sarah · 同事', subject:'方便帮我看一下这个PR吗？', snippet:'有空的话，想请你review一下我提的这个改动。'}
+  {id:'r2_1', from:'Slack Digest', subject:'You have 12 unread mentions', snippet:'You were mentioned 12 times in the last 24 hours.'},
+  {id:'r2_2', from:'David Chen · VP Engineering', subject:'Great work on the release', snippet:'Nice work this week — the results were excellent, thanks for the effort.'},
+  {id:'r2_3', from:'Conference Committee', subject:'Call for papers: AI Systems Conference 2027', snippet:'Submissions are open, deadline end of next month.'},
+  {id:'r2_4', from:'Bank Alert', subject:'Suspicious login attempt detected', snippet:'We noticed a login from a new device — please confirm this was you.'},
+  {id:'r2_5', from:'Weekly Trivia', subject:'This week\'s knowledge challenge is here', snippet:'Test your knowledge and win a small prize.'},
+  {id:'r2_6', from:'Sarah · Coworker', subject:'Can you take a look at this PR?', snippet:'When you get a chance, I\'d love your review on this change.'}
 ];
 
 const STRINGS = {
-  zh: {
-    title: '冷启动 + 自适应学习 演示',
-    lede: '用一批邮件的初始标注启动模型，再靠你后续的确认/纠正不断学习偏好，可自选轮数和邮件量，模拟"越用越准"的过程。',
-    langBtn: 'EN',
-    setupIntro1: '1. 你先给第一批邮件打标签：还想看 / 不想看 / 跳过（隐私），作为冷启动数据。',
-    setupIntro2: '2. 每一轮，系统基于目前为止的所有标签预测下一批邮件。',
-    setupIntro3: '3. 你确认或纠正预测结果，反馈滚动进入下一轮；全部轮次结束后，查看每轮准确率的图表并可导出CSV。',
-    sourceLabel: '数据来源',
-    sourceSample: '示例邮件（固定18封，2轮学习）',
-    sourceGmail: '我的真实 Gmail 邮件',
-    totalLabel: '总邮件数（含冷启动批次，最多200）',
-    roundsLabel: '学习轮数（不含冷启动）',
-    batchPreview: (n, m) => `每批 ${n} 封 · 冷启动 + ${m} 轮学习，共使用 ${n * (m + 1)} 封`,
-    batchTooSmall: '每批不足1封，请增加总邮件数或减少轮数',
-    startSample: '用示例邮件开始 →',
-    startGmail: '从 Gmail 拉取邮件并开始 →',
-    gmailLoading: (n) => `正在从 Gmail 拉取 ${n} 封邮件…（数量较多时可能需要一分钟左右）`,
-    gmailTooFew: (n) => `拉到的邮件不足 ${n} 封，换个邮箱或减少总邮件数再试`,
-    stepColdstart: '初始标注',
-    stepRound: (i, n) => `第 ${i} / ${n} 轮`,
-    stepSummary: '效果对比',
-    keepBtn: '还想看',
-    skipBtn: '不想看',
-    privacyBtn: '跳过（隐私）',
-    coldstartDone: '完成标注，让AI开始学习 →',
-    roundHeading: (i, n) => `第 ${i} / ${n} 轮：结合目前所有反馈做出的预测`,
-    aiPredictKeep: 'AI 预测：还想看',
-    aiPredictSkip: 'AI 预测：不想看',
-    reasonPrefix: '理由：',
-    verdictCorrect: '✓ AI 猜对了',
-    verdictCorrectedKeep: '✕ 已纠正为：还想看',
-    verdictCorrectedSkip: '✕ 已纠正为：不想看',
-    verdictPrivacy: '已跳过（隐私，不计入统计）',
-    confirmCorrectBtn: 'AI 猜对了',
-    confirmFlipBtn: '不对，反过来',
-    loadingRound: 'AI 正在根据已有标注学习你的偏好…',
-    retryBtn: '重试',
-    nextRoundBtn: (i) => `进入第 ${i} 轮 →`,
-    toSummaryBtn: '查看统计与图表 →',
-    chartTitle: '各轮准确率趋势',
-    colRound: '轮次',
-    colLabeled: '有效标注数',
-    colCorrect: 'AI猜对数',
-    colAccuracy: '准确率',
-    colSkipped: '隐私跳过',
-    downloadCsv: '下载CSV',
-    restartBtn: '重新开始演示',
-    trendUp: '整体趋势是准确率随轮次上升——这正是"自适应学习"想验证的效果：反馈越多，模型对这个具体用户的画像就越准。',
-    trendFlat: '各轮准确率大体持平。样本量较小或用户偏好本身不集中时会有波动，属于正常现象；建议汇总多组测试者的数据看整体趋势，而不是看单次结果。',
-    trendDown: '整体趋势反而是准确率随轮次下降，这提示冷启动阶段的样例数量、覆盖的邮件类型多样性会显著影响效果，值得在报告里作为局限性讨论。',
-    noteText: '本演示由本地小型在线学习模型（手写特征 + 逻辑回归式梯度更新，外加按发件人累积的历史反馈统计）实时给出预测：一开始使用手工调优的冷启动先验规则，收到你的标注/纠正后立即做一次梯度更新，模拟"反馈越多、越懂你"的效果，且完全在本机运行、无需调用大模型。',
-  },
   en: {
     title: 'Cold-Start + Adaptive Learning Demo',
     lede: 'Bootstrap the model with an initial batch of labeled emails, then let it keep learning from your corrections. Choose your own email count and round count to simulate "gets better the more you use it."',
-    langBtn: '中文',
     setupIntro1: '1. Label the first batch: Keep / Skip / Skip (privacy) — this seeds the cold-start data.',
     setupIntro2: '2. Each round, the system predicts the next batch using every label collected so far.',
     setupIntro3: '3. Confirm or correct each prediction; feedback rolls into the next round. After the last round, see a per-round accuracy chart and export a CSV.',
@@ -241,15 +187,13 @@ const STRINGS = {
 };
 
 function t(key, ...args){
-  const dict = STRINGS[state.lang] || STRINGS.zh;
-  const entry = dict[key];
+  const entry = STRINGS.en[key];
   if (typeof entry === 'function') return entry(...args);
   return entry !== undefined ? entry : key;
 }
 
 let state = {
   step: 'setup', // setup | coldstart | round | summary
-  lang: 'zh',
   source: 'sample', // 'sample' | 'gmail'
   totalInput: 60,
   roundsInput: 5,
@@ -260,11 +204,6 @@ let state = {
   gmailLoading: false,
   gmailError: null
 };
-
-function toggleLang(){
-  state.lang = state.lang === 'zh' ? 'en' : 'zh';
-  render();
-}
 
 function setSource(src){
   state.source = src;
@@ -319,7 +258,7 @@ async function startFlow(){
     const resp = await fetch(API_BASE + '/gmail/fetch?count=' + total);
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({}));
-      throw new Error(body.detail || ('后端返回状态码 ' + resp.status));
+      throw new Error(body.detail || ('Backend returned status ' + resp.status));
     }
     const emails = await resp.json();
     if (emails.length < total) throw new Error(t('gmailTooFew', total));
@@ -385,14 +324,14 @@ async function classifyEmails(labeledExamples, targetEmails){
         id: e.id, from: e.from, subject: e.subject, snippet: e.snippet,
         ...Object.fromEntries(STRUCTURAL_FIELDS.map(f => [f, e[f]]))
       })),
-      lang: state.lang
+      lang: 'en'
     })
   });
-  if (!resp.ok) { throw new Error('后端返回状态码 ' + resp.status); }
+  if (!resp.ok) { throw new Error('Backend returned status ' + resp.status); }
   const parsed = await resp.json();
   const byId = {};
   parsed.forEach(p => { byId[p.id] = p; });
-  return targetEmails.map(e => byId[e.id] || {id: e.id, keep: true, reason: '（未返回预测，默认保留）'});
+  return targetEmails.map(e => byId[e.id] || {id: e.id, keep: true, reason: '(no prediction returned, defaulting to keep)'});
 }
 
 function goToColdstart(){ state.step = 'coldstart'; state.currentRoundIdx = 0; render(); }
@@ -414,7 +353,7 @@ async function startRound(idx){
     const predictions = await classifyEmails(examples, state.batches[idx]);
     r.predictions = predictions;
   } catch (err) {
-    r.error = '预测失败，请重试。（' + err.message + '）';
+    r.error = 'Prediction failed, please retry. (' + err.message + ')';
   }
   r.loading = false;
   render();
@@ -445,7 +384,6 @@ function computeAccuracy(roundIdx){
 function resetDemo(){
   state = {
     step: 'setup',
-    lang: state.lang,
     source: state.source,
     totalInput: state.totalInput,
     roundsInput: state.roundsInput,
@@ -480,12 +418,7 @@ function buildHeader(){
   left.innerHTML = '<div class="eyebrow">SMART EMAIL PRIORITIZATION</div>' +
     '<h1>' + t('title') + '</h1>' +
     '<p class="lede">' + t('lede') + '</p>';
-  const langBtn = document.createElement('button');
-  langBtn.className = 'lang-btn';
-  langBtn.textContent = t('langBtn');
-  langBtn.onclick = toggleLang;
   div.appendChild(left);
-  div.appendChild(langBtn);
   return div;
 }
 
