@@ -11,6 +11,14 @@ This folder contains three standalone tools plus a shared backend. They all run 
 
 The point of splitting extractor vs. test tool: data collection (slow, manual, needs your own Gmail) and statistical testing (fast, automatic, needs no credentials) are decoupled. Label once, then anyone can re-run experiments with different batch sizes/trial counts on the same data without re-labeling.
 
+## Demo screenshots
+
+`email_priority_demo.html` running end-to-end against a real Gmail inbox:
+
+| Setup | Cold-start labeling | Round predictions |
+|---|---|---|
+| ![Setup screen: Gmail source, 60 emails, 5 rounds](screenshots/1.png) | ![Cold-start labeling on real inbox emails](screenshots/2.png) | ![Round 1 predictions with AI reasons and corrections](screenshots/3.png) |
+
 ## 1. One-time setup (each person does this on their own machine)
 
 **Requirements:** Python 3.9+, a personal Gmail account (recommended — school Google Workspace accounts sometimes have IMAP/app-passwords disabled by the admin).
