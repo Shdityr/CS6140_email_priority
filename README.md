@@ -1,4 +1,12 @@
-# Smart Email Prioritization — Local Prototype Setup
+# Smart Email Prioritization
+
+Inbox overload is a well-known problem, but unlike spam, what counts as a "priority" email is personal, not universal — a newsletter one person deletes on sight is exactly what another opens first. This project is a fully local, privacy-preserving email-priority classifier: a small, hand-designed 18-feature logistic regression, initialized from a hand-tuned general-purpose cold-start prior and then personalized to an individual user via online gradient descent on their own Keep/Skip feedback — entirely on the user's machine, with no email content or Gmail credentials ever sent to a third party.
+
+We built this rather than assuming it was the right design: using three real, independently collected and labeled Gmail datasets, we empirically compared it against two alternatives we also implemented — a variant that mines extra term features from the public Enron corpus via TF-IDF, and a general-purpose LLM (Claude Haiku 4.5) prompted with no hand-designed features at all. The hand-crafted model won on measured, held-out accuracy against both, stayed fully explainable, and had zero marginal inference cost, while the Enron-mined vocabulary turned out to memorize corpus-specific employee names rather than a transferable notion of importance, and the LLM traded away precision for perfect recall at a real per-classification dollar cost and latency. We also found personalization itself isn't a safe default: it produced a clear accuracy gain on one dataset and a clear loss on a smaller one, most likely because too little accumulated feedback gives the model nothing reliable to learn from.
+
+Full methodology, related work, and results are in [`latex/report.tex`](latex/report.tex) (the project report); this README covers how to run the code.
+
+---
 
 This folder contains three standalone tools plus a shared backend. They all run **entirely on your own machine** — nothing is sent to a third-party AI, and your Gmail password never leaves your computer.
 
@@ -18,6 +26,14 @@ The point of splitting extractor vs. test tool: data collection (slow, manual, n
 | Setup | Cold-start labeling | Round predictions |
 |---|---|---|
 | ![Setup screen: Gmail source, 60 emails, 5 rounds](screenshots/1.png) | ![Cold-start labeling on real inbox emails](screenshots/2.png) | ![Round 1 predictions with AI reasons and corrections](screenshots/3.png) |
+
+## Report figures
+
+The three figures used in `latex/report.tex`:
+
+| Enron feature activation (cold-start prior, no training) | Personalization helped: Zhidian & Sathvik | Personalization hurt: Vignesh |
+|---|---|---|
+| ![Mean per-feature activation, keep vs. skip, across all 30,000 Enron rows](figures/feature_activation.png) | ![Learning curves for the two datasets where personalization improved accuracy](figures/personalization_curve_good.png) | ![Learning curve for the dataset where personalization reduced accuracy](figures/personalization_curve_vignesh.png) |
 
 ## 1. One-time setup (each person does this on their own machine)
 
